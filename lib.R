@@ -1,9 +1,9 @@
 # libraries  -----------------------------------------------------------------
 
-library(dplyr)
 library(readr)
-library(cpLIB)
+library(generic)
 library(plotly)
+library(dplyr)
 library(zoo)
 
 # functions  ---------------------------------------------------------------
@@ -17,44 +17,53 @@ build_formula = function(dv, ivs) {
                      "`"))
 }
 
-apply_normalisation = function(data, norm_table = NULL) {
-  # if no norm table is provided, end by returning data
-  if (is.null(norm_table)) {
-    return(data)
+apply_normalisation = function(raw_data, meta_data = NULL) {
+  
+  # in raw data, check for and drop NAs
+  if(any(complete.cases(raw_data))) {
+    print("Warning: NA's found in raw data will be dropped.")
+    raw_data = raw_data[complete.cases(raw_data), ]
   }
   
-  # get all variables in norm_table
-  variables = norm_table$variables
+  # if no norm table is provided, end by returning data
+  if (is.null(meta_data)) {
+    return(raw_data)
+  }
+  
+  # get all variables in meta_data
+  variables = meta_data$variables
   
   # get data column names
-  data_variables = colnames(data)
+  data_variables = colnames(raw_data)
   
   # get the pool variable
   pool_variable = TRY({
-    variables[toupper(norm_table$transformation) == "POOL"]
+    variables[toupper(meta_data$meta) == "POOL"]
   })
   
   # check if a pool variable is provided
-  if (is.null(pool_variable)) {
+  if (is.null(pool_variable) | length(pool_variable) == 0) {
     # if not provided create a unique one
     pool_variable = "total"
     
     # add the pool variable to data
-    data = cbind(data, total = pool_variable)
+    raw_data = cbind(raw_data, total = pool_variable)
     
+    # get new data column names
+    data_variables = colnames(raw_data)
   }
   
   
   # check if more than 1 pool variable is provided
   if (length(pool_variable) > 1) {
     print("Error: More than 1 pool variable provided")
-    return(data)
+    return(raw_data)
   }
   
   #check if pool variable in data variables
   if (!(pool_variable %in% data_variables)) {
     print("Error: pool variable not found in data")
-    return(data)
+    return(raw_data)
   }
   
   # remove the pool variable from the others
@@ -63,53 +72,131 @@ apply_normalisation = function(data, norm_table = NULL) {
   # for each variable
   for (var in variables) {
     # get that variable's transformation
-    transformation = norm_table$transformation[norm_table$variables == var] %>% toupper()
+    transformation = meta_data$meta[meta_data$variables == var] %>% toupper()
     
     # if STA apply pooled sta
     if (transformation == "STA") {
-      data = data %>%
+      raw_data = raw_data %>%
         group_by(!!sym(pool_variable)) %>%
-        mutate(var = !!sym(var) / mean(!!sym(var))) %>%
+        mutate(var = !!sym(var) / mean(!!sym(var), na.rm = T)) %>%
         mutate(var = if_else(is.na(var), 0, var))
       
       # replace the raw variable with the STAed variable
-      data[, var] = data[, "var"]
-      data[, "var"] = NULL
+      raw_data[, var] = raw_data[, "var"]
+      raw_data[, "var"] = NULL
       
     }
     
   }
   
-  return(data)
+  return(raw_data)
   
 }
 
-run_model = function(data, dv, ivs, norm_table = NULL) {
+apply_transformation = function(model_table,
+                                meta_data = NULL,
+                                raw_data) {
+  # get variables from model table
+  ### add ivs, filter?
+  variables = model_table$variables
+  transformations = c("decay", "dim_rets", "lag", "ma")
+  
+  # if a meta table is provided try to extract the POOL variable
+  if (!is.null(meta_data)) {
+    pool = TRY({
+      meta_data %>%
+        filter(meta == "POOL") %>%
+        pull(variables)
+    })
+    
+    # if there is a pool variable in the meta data...
+    # ...but has zero
+    if (!is.null(pool)) {
+      if (length(pool) == 0) {
+        print("Warning: no pool variable found in meta_data")
+        pool = "total"
+        raw_data = tibble(raw_data, total = pool)
+      }
+    } else{
+      # else create a pool variable "total"...
+      print("Warning: no pool variable found in meta_data")
+      pool = "total"
+      # ...and add it to the data
+      raw_data = tibble(raw_data, total = pool)
+      
+    }
+  } else{
+    # else create a pool variable "total"...
+    print("Info: no meta_data provided")
+    pool = "total"
+    # ...and add it to the data
+    raw_data = tibble(raw_data, total = pool)
+    
+  }
+  
+  for (var in variables) {
+    var_val = raw_data %>%
+      select(!!sym(pool), !!sym(var))
+    
+    dim_rets = model_table$dim_rets[model_table$variables == var]
+    decay = model_table$decay[model_table$variables == var]
+    lag = model_table$lag[model_table$variables == var]
+    ma = model_table$ma[model_table$variables == var]
+    
+    var_val = var_val %>%
+      group_by(!!sym(pool)) %>%
+      mutate(new_var = diminish(v = !!sym(var), dim_rets))
+    
+    var_val = var_val %>%
+      group_by(!!sym(pool)) %>%
+      mutate(new_var = decay(v = new_var, decay))
+    
+    var_val = var_val %>%
+      group_by(!!sym(pool)) %>%
+      mutate(new_var = generic::lag(v = new_var, lag))
+    
+    var_val = var_val %>%
+      group_by(!!sym(pool)) %>%
+      mutate(new_var = ma(v = new_var, ma))
+    
+    raw_data[, var] = var_val$new_var
+    
+  }
+  
+  return(raw_data)
+  
+}
+
+
+run_model = function(data, dv, ivs, meta_data = NULL) {
   # build formula object
   formula = build_formula(dv = dv, ivs = ivs)
   
+  # get only relevant columns
+  data = data[,c(dv,ivs)]
+  
   # generate norm_data
-  norm_data = apply_normalisation(data = data,
-                                  norm_table = norm_table)
+  norm_data = apply_normalisation(raw_data = data,
+                                  meta_data = meta_data)
   
   # run model on norm_data
   model = lm(formula = formula, data = norm_data)
   
-  # add norm_table to mdoel object
-  model$norm_table = norm_table
+  # add meta_data to mdoel object
+  model$meta_data = meta_data
   
   # return model object
   return(model)
 }
 
 decomping = function(model,
-                     raw_data,
-                     de_normalise = F,
+                     de_normalise = T,
+                     raw_data = NULL,
                      categories = NULL,
                      id_var = NULL) {
-  
   # get the coefficients from the model object
   coef = model$coefficients
+  
   # get the modeled data from the model object
   data = model$model
   
@@ -117,22 +204,29 @@ decomping = function(model,
   dv = colnames(data)[1]
   
   # get the dependent variable from the data object
-  actual = data[,dv]
+  actual = data[, dv]
   
   # initiate variable to confirm if correct raw data is provided
   raw_actual_supplied = F
   
+  
+  # in raw data is supplied check for and drop NAs
+  if(!is.null(raw_data)){
+    if(any(complete.cases(raw_data))) {
+      print("Warning: NA's found in raw data will be dropped.")
+      raw_data = raw_data[complete.cases(raw_data), ]
+    }
+  }
+  
   # get raw dependent variable if supplied
   if (de_normalise) {
-    
     # if no raw data provided
-    if(is.null(raw_data)){
+    if (is.null(raw_data)) {
       print("Warning: you must provide a raw_data to de normalise the data")
     }
     
     # if the raw data is supplied
     else{
-      
       # try to get the dependent variable from the raw data
       raw_actual = TRY({
         raw_data %>%
@@ -141,12 +235,10 @@ decomping = function(model,
       
       # if the dependent variable is found in the raw data provided
       if (!is.null(raw_actual)) {
-        
         # switch raw_actual_supplied variable to TRUE
         raw_actual_supplied = T
         
-      }else{
-        
+      } else{
         # else print warning
         print("Warning: dependent variable not found in raw data supplied")
         
@@ -161,65 +253,84 @@ decomping = function(model,
   coef = coef[2:length(coef)]
   
   # generate an id variable if one is not provided
-  if(is.null(id_var)) {
-    print(
-      paste0("Info: no id variable supplied. New id variable generated as 1 to ",
-             nrow(data))
-      )
+  if (is.null(id_var)) {
+    print(paste0(
+      "Info: no id variable supplied. New id variable generated as 1 to ",
+      nrow(data)
+    ))
     id_var = "id"
     id_var_values = 1:nrow(data)
-  }else{
-    
-    # if and id_var is provided, check that raw data is provided 
-    if(is.null(raw_data)){
-      
+  } else{
+    # if and id_var is provided, check that raw data is provided
+    if (is.null(raw_data)) {
       # if raw data not provided print warning and generate id_var_values
-      print(paste0("Warning: ID variable provided, but no raw data provided. New id variable generated as 1 to ",
-                   nrow(data)))
+      print(
+        paste0(
+          "Warning: ID variable provided, but no raw data provided. New id variable generated as 1 to ",
+          nrow(data)
+        )
+      )
       id_var_values = 1:nrow(data)
     }
     else{
       # if raw data is provided, check that raw data contains the id variable
-      if(id_var %in% colnames(raw_data)){
-        id_var_values = raw_data[,id_var] %>% pull()
-      }else{
+      if (id_var %in% colnames(raw_data)) {
+        id_var_values = raw_data[, id_var] %>% pull()
+      } else{
         # if raw data doesnt contain the id_var, print warning and generate id_variable
-        print(paste0("Warning: ID variable provided not found in raw data provided. New id variable generated as 1 to ",
-                     nrow(data)))
+        print(
+          paste0(
+            "Warning: ID variable provided not found in raw data provided. New id variable generated as 1 to ",
+            nrow(data)
+          )
+        )
         id_var_values = 1:nrow(data)
       }
     }
   }
   
+  
+  
   # try to get the normalisation table
-  ## (in the "de_normalise" section ?)
-  ## a pool variable is useful for consistency (if a filter needsa to be applied)
-  norm_table = TRY({model$norm_table})
-
-  # if no norm_table is provided
-  if(is.null(norm_table)){
-    print("Info: no normalisation table (norm_table) found in model object. A pool variable ('total') will be generated.")
+  meta_data = TRY({
+    model$meta_data
+  })
+  
+  # if no meta_data is provided
+  if (is.null(meta_data)) {
+    print(
+      "Info: no normalisation table (meta_data) found in model object. A pool variable ('total') will be generated."
+    )
     
     pool = tibble("total")
-  }else{
-    
+  } else{
     # if a norm table is provided extract the pool variable
-    pool_variable = norm_table$variables[toupper(norm_table$transformation) == "POOL"]
+    pool_variable = meta_data$variables[toupper(meta_data$meta) == "POOL"]
     
     # if no raw data provided print a warning and generate a pool variable
-    if(is.null(raw_data)){
-      print("Warning: no raw_data found to extract pool variable found in model's norm_table. A pool variable ('total') will be generated.")
+    if (is.null(raw_data)) {
+      print(
+        "Warning: no raw_data found to extract pool variable found in model's meta_data. A pool variable ('total') will be generated."
+      )
       
       pool = tibble("total")
-    }else{
+    } else if (length(pool_variable) > 0) {
       # if raw data is provided check if it contains the pool variable
-      if(pool_variable %in% colnames(raw_data)){
-        pool = raw_data[,pool_variable]
-      }else{
+      if (pool_variable %in% colnames(raw_data)) {
+        pool = raw_data[, pool_variable]
+      } else{
         # if not, print warning and geterate pool variable
-        print("Warning: pool variable from model's norm_table not found in raw_data. A pool variable ('total') will be generated.")
+        print(
+          "Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total') will be generated."
+        )
         pool = tibble("total")
       }
+    }else{
+      # if not, print warning and geterate pool variable
+      print(
+        "Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total') will be generated."
+      )
+      pool = tibble("total")
     }
   }
   
@@ -233,20 +344,20 @@ decomping = function(model,
   ) %>%
     reshape2::melt(id.vars = c("id", "pool"))
   
-  # get the independent variables
+  # get the independent variables decomp
   independendent_variables =  data[, 2:ncol(data)]
-  
-  
   if (length(coef) == 1) {
     # multiply independent variable by coefficient
     variable_decomp = data.frame(independendent_variables * coef)
     colnames(variable_decomp) = names(coef)
   } else{
     # multiply independent variables data frame by coefficient vector
-    variable_decomp = data.frame(mapply(FUN = `*`,
-                                        independendent_variables, 
-                                        coef,
-                                        SIMPLIFY = FALSE))
+    variable_decomp = data.frame(mapply(
+      FUN = `*`,
+      independendent_variables,
+      coef,
+      SIMPLIFY = FALSE
+    ))
   }
   
   # rename variable decomp using coef names
@@ -277,20 +388,18 @@ decomping = function(model,
   }
   
   # if a raw actual is provided and de-normalise is TRUE, check if dv is STAed
-  if(raw_actual_supplied & de_normalise){
-    
-    # check if norm_table is provided
-    if(is.null(norm_table)){
-      print("Warning: norm_table not found in model, but required to de-normalised.")
-    }else{
-      # else check if the dv is not in norm_table
-      if(!(dv %in% norm_table$variables)){
-        
+  if (raw_actual_supplied & de_normalise) {
+    # check if meta_data is provided
+    if (is.null(meta_data)) {
+      print("Warning: meta_data not found in model, but required to de-normalised.")
+    } else{
+      # else check if the dv is not in meta_data
+      if (!(dv %in% meta_data$variables)) {
         # if the dv is not found in the norm table print warning
         ### STA could work if the de_normalise is true
-        print("Warning: dv not found in norm_table.")
+        print("Warning: dv not found in meta_data.")
         
-      }else{
+      } else{
         pool_mean = tibble(raw_actual = raw_actual %>% pull(),
                            pool = pool %>% pull()) %>%
           group_by(pool) %>%
@@ -415,12 +524,12 @@ decomp_chart = function(decomp_list,
   
   # get actual dependent variable table
   fitted_values = decomp_list$fitted_values
-  fitted_values = fitted_values[fitted_values$variable %in% c("actual", "residual"),]
+  fitted_values = fitted_values[fitted_values$variable %in% c("actual", "residual"), ]
   
   # filter by pool if provided
   if (!is.null(pool)) {
-    decomp = decomp[decomp$pool == pool,]
-    fitted_values = fitted_values[fitted_values$pool == pool,]
+    decomp = decomp[decomp$pool == pool, ]
+    fitted_values = fitted_values[fitted_values$pool == pool, ]
   }
   
   # the id variable name is the first column name
@@ -451,7 +560,7 @@ fit_chart = function(decomp_list,
   
   # filter by pool if provided
   if (!is.null(pool)) {
-    fitted_values = fitted_values[fitted_values$pool == pool,]
+    fitted_values = fitted_values[fitted_values$pool == pool, ]
   }
   
   # the id variable name is the first column name
@@ -469,119 +578,81 @@ fit_chart = function(decomp_list,
   
 }
 
-decay = function(v,decay){
-  if (decay == 0) {
-    return(v)
-  }
-  else {
-    stats::filter(v, decay, method = "recursive")
-  }
-}
-diminish = function(v,m,abs=T){
-  m = as.numeric(as.character(m))
-  if (m == 0) {
-    return(v)
-  }
-  else {
-    1 - base::exp(-v/m)
-  }
-}
-lag = function(v,l,zero=T){
+
+what_next = function(raw_data,ivs,dv,test_ivs,meta_data = NULL){
   
-  # if lag is zero, return original vector
-  if(l == 0){
-    return(v)
-  }
   
-  # get the length of the vector
-  n = length(v)
+  # define output table to fill with loop
+  output = tibble(
+    variable = "0",
+    adj_R2 = 0,
+    t_stat = 0,
+    coef = 0
+  )
+  
+  for(i in 1:length(test_ivs)){
     
-  # if the lag is positive
-  if(l > 0){
+    # get test variable
+    var = test_ivs[i]
     
-    #move forward 
-    
-    # cut forward extremities
-    v = v[1:(n-l)]
-    
-    # if zero is TRUE
-    if(zero == T){
+    # check if in data
+    if(!(var %in% colnames(raw_data))){
+      print(
+        paste0(
+          "Warning: variable ",
+          var,
+          " not found in data supplied."
+        )
+      )
       
-      v = c(rep(0,l),v)
+      # fill row with empty
+      output[i,] = list(var,NA,NA,NA)
       
-    }else if(zero == F){
+    }else{
+      # run model
+      model = TRY({run_model(data = raw_data,dv = dv,ivs = c(ivs,var),meta_data = meta_data)})
       
-      v = c(rep(v[1],l),v)
       
+      # if model failed
+      if(is.null(model)){
+        
+        # fill row with empty
+        output[i,] = list(var,NA,NA,NA)
+        
+      }else{
+        
+        # get model summary
+        ms = summary(model)
+        
+        # generate row
+        adj_R2 = ms$adj.r.squared
+        coef = ms$coefficients[var,"Estimate"]
+        t_value = ms$coefficients[var,"t value"]
+        
+        output[i,] = list(var,adj_R2,t_value,coef)
+        
+      }
     }
   }
   
-  if(l < 0){
-    
-    l = l*-1
-    
-    v = v[(l+1):n]
-    
-    if(zero == T){
-      
-      v = c(v,rep(0,l))
-      
-    }
-    else{
-      
-      v = c(v,rep(v[length(v)],l))
-      
-    }
-  }
-  
-  return(v)
+  return(output)
   
 }
-ma = function(v,width,align="center",fill=1){
-  
-  if(width == 0){
-    return(v)
+
+
+read_xcsv = function(file) {
+  # if the file eds with .csv read as csv
+  if (endsWith(x = tolower(file) , suffix = ".csv")) {
+    data = readr::read_csv(file = file)
   }
-  
+  else if (endsWith(x = tolower(file) , suffix = ".xls") |
+           endsWith(x = tolower(file) , suffix = ".xlsx") |
+           endsWith(x = tolower(file) , suffix = ".xlsm")) {
+    data = readr::read_excel(file = file)
+  }
   else{
-    
-    # fill options:
-    ## 0
-    ## 1 (extremes)
-    
-    if(fill == 0){
-      v = rollmean(v,width,fill = fill,align = align)
-    }
-    else if(fill == 1){
-      
-      fill = mean(v)
-      v = rollmean(v,width,fill = fill,align = align)
-      
-      #if right, left, center
-      # if odd or even
-      # if(align == "center"){}
-      # if(align == "left"){}
-      # if(align == "right"){}
-      # test_roll_mean = function(width,fill){
-      #   
-      #   df = data.frame(
-      #     v0 = mtcars$mpg,
-      #     vcenter = rollmean(mtcars$mpg,width,fill = fill,align = "center"),
-      #     vright = rollmean(mtcars$mpg,width,fill = fill,align = "right"),
-      #     vleft = rollmean(mtcars$mpg,width,fill = fill,align = "left"),
-      #     id = 1:32
-      #   ) %>% reshape2::melt(id.vars = "id")
-      #   
-      #   plot_ly() %>% 
-      #     add_lines(data = df,x = ~id,y = ~value,color = ~variable)
-      #   
-      # }
-      # 
-      # test_roll_mean(width = 5,fill = NA)
-      # 
-      
-    }
+    print("Error: file path must refer to csv or Excel (.xls, ,xlsm, .xlsx) file")
+    return(NULL)
   }
-  
-  return(v)
+  return(data)
 }
