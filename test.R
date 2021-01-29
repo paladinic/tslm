@@ -93,10 +93,17 @@ test_ivs = colnames(raw_data)[grepl(pattern = "Close",x = colnames(raw_data))]
 
 what_next(raw_data = raw_data,ivs = ivs,dv = dv,test_ivs = test_ivs)
 
-what_trans = function(raw_data,ivs,dv,test_ivs,meta_data = NULL){
+test_table = tibble(
+  variable = c("Close_eqqq","Close_AAPL","Close_AMZN","Close_MSFT","Close_PYPL"),
+  transformation = c("diminish","diminish","decay","diminish","decay"),
+  value = c(50,40,.5,100,.8)
+)
+
+what_trans = function(raw_data,ivs,dv,test_table,meta_data = NULL){
   
   # if duplicate_var=T keep any trans variable in current model spec
   # and add the transformed one
+  ## FOR NOW - replace
   
   # define output table to fill with loop
   output = tibble(
@@ -156,10 +163,3 @@ what_trans = function(raw_data,ivs,dv,test_ivs,meta_data = NULL){
   return(output)
   
 }
-
-
-test_table = tibble(
-  variable = c("Close_eqqq","Close_AAPL","Close_AMZN","Close_MSFT","Close_PYPL"),
-  transformation = c("diminish","diminish","decay","diminish","decay"),
-  value = c(50,40,.5,100,.8)
-)

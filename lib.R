@@ -17,6 +17,24 @@ build_formula = function(dv, ivs) {
                      "`"))
 }
 
+build_model_table = function(ivs){
+  
+  # number of variables
+  n = length(ivs)
+  
+  # build model table
+  model_table = tibble(
+    variables = ivs,
+    decay = rep(0,n),
+    dim_rets = rep(0,n),
+    lag = rep(0,n),
+    ma = rep(0,n)
+  )
+  
+  return(model_table)
+  
+}
+
 apply_normalisation = function(raw_data, meta_data = NULL) {
   
   # in raw data, check for and drop NAs
@@ -168,7 +186,18 @@ apply_transformation = function(model_table,
 }
 
 
-run_model = function(data, dv, ivs, meta_data = NULL) {
+run_model = function(data, dv, ivs = NULL, meta_data = NULL, model_table = NULL) {
+  
+  # if not null model table is provided
+  if(!is.null(model_table)){
+    if(!is.null(ivs)){
+      print("Info: will use variables from model_table and disregard ivs argument.")
+    }
+    ivs = model_table$variables
+  }else{
+    model_table = build_model_table(ivs)
+  }
+  
   # build formula object
   formula = build_formula(dv = dv, ivs = ivs)
   
@@ -178,6 +207,10 @@ run_model = function(data, dv, ivs, meta_data = NULL) {
   # generate norm_data
   norm_data = apply_normalisation(raw_data = data,
                                   meta_data = meta_data)
+  
+  # generate norm_data
+  norm_data = apply_transformation(raw_data = data,
+                                    meta_data = meta_data)
   
   # run model on norm_data
   model = lm(formula = formula, data = norm_data)
@@ -579,7 +612,7 @@ fit_chart = function(decomp_list,
 }
 
 
-what_next = function(raw_data,ivs,dv,test_ivs,meta_data = NULL){
+what_next = function(raw_data, ivs, dv, test_ivs, meta_data = NULL){
   
   
   # define output table to fill with loop
