@@ -39,7 +39,7 @@ fit_chart(decomp_list = decomp_list,pool = "India")
 
 # test 2   --------------------------------------------------------------------
 
-data_table = mtcars
+raw_data = mtcars
 
 dv = "mpg"
 ivs = c("wt", "cyl")
@@ -52,16 +52,11 @@ model_table = tibble(
   ma = c(0,0)
 )
 
-norm_data = apply_normalisation(data = data_table)
-
-trans_data = apply_transformation(model_table = model_table,
-                     raw_data = norm_data)
-
-model = run_model(dv = dv,ivs = ivs, data = trans_data)
+model = run_model(dv = dv,model_table = model_table, data = raw_data)
 
 decomp_list = decomping(
   model = model,
-  raw_data = data_table
+  raw_data = raw_data
 )
 
 decomp_chart(decomp_list = decomp_list)
@@ -92,6 +87,9 @@ decomp_chart(decomp_list = d)
 test_ivs = colnames(raw_data)[grepl(pattern = "Close",x = colnames(raw_data))]
 
 what_next(raw_data = raw_data,ivs = ivs,dv = dv,test_ivs = test_ivs)
+
+
+###########
 
 test_table = tibble(
   variable = c("Close_eqqq","Close_AAPL","Close_AMZN","Close_MSFT","Close_PYPL"),

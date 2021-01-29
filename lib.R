@@ -111,9 +111,16 @@ apply_normalisation = function(raw_data, meta_data = NULL) {
   
 }
 
-apply_transformation = function(model_table,
-                                meta_data = NULL,
-                                raw_data) {
+apply_transformation = function(raw_data,
+                                model_table = NULL,
+                                meta_data = NULL) {
+  
+  # check model table provided (not NULL)
+  if(is.null(model_table)){
+    print("Info: No model table provided. Returning raw data.")
+    return(raw_data)
+  }
+  
   # get variables from model table
   ### add ivs, filter?
   variables = model_table$variables
@@ -188,14 +195,13 @@ apply_transformation = function(model_table,
 
 run_model = function(data, dv, ivs = NULL, meta_data = NULL, model_table = NULL) {
   
-  # if not null model table is provided
+  # if model table is provided
   if(!is.null(model_table)){
     if(!is.null(ivs)){
       print("Info: will use variables from model_table and disregard ivs argument.")
     }
+    # use model table variables as ivs
     ivs = model_table$variables
-  }else{
-    model_table = build_model_table(ivs)
   }
   
   # build formula object
@@ -208,12 +214,12 @@ run_model = function(data, dv, ivs = NULL, meta_data = NULL, model_table = NULL)
   norm_data = apply_normalisation(raw_data = data,
                                   meta_data = meta_data)
   
-  # generate norm_data
-  norm_data = apply_transformation(raw_data = data,
-                                    meta_data = meta_data)
+  # generate trans_data
+  trans_data = apply_transformation(raw_data = norm_data,
+                                    model_table = model_table)
   
   # run model on norm_data
-  model = lm(formula = formula, data = norm_data)
+  model = lm(formula = formula, data = trans_data)
   
   # add meta_data to mdoel object
   model$meta_data = meta_data
