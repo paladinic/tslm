@@ -8,6 +8,8 @@ library(zoo)
 
 # functions  ---------------------------------------------------------------
 
+# a function that accepts 2 arguments (a string and a vector of strings)
+# and returns a formula ( y ~ x1 + x2 ) 
 build_formula = function(dv, ivs) {
   f = formula(paste0("`",
                      dv,
@@ -17,6 +19,8 @@ build_formula = function(dv, ivs) {
                      "`"))
 }
 
+# a function that accpets 1 argument (a vector of strings)
+# and returns a table (model_table)
 build_model_table = function(ivs){
   
   # number of variables
@@ -35,19 +39,35 @@ build_model_table = function(ivs){
   
 }
 
-apply_normalisation = function(raw_data, meta_data = NULL) {
+apply_normalisation = function(raw_data = NULL,
+                               meta_data = NULL,
+                               model_table = NULL,
+                               dv = NULL,
+                               verbose=T){
   
-  # in raw data, check for and drop NAs
-  if(any(complete.cases(raw_data))) {
-    print("Warning: NA's found in raw data will be dropped.")
-    raw_data = raw_data[complete.cases(raw_data), ]
-  }
-  
-  # if no norm table is provided, end by returning data
+  # if no meta_data is provided, end by returning raw_data
   if (is.null(meta_data)) {
+    if(verbose){
+      cat("\n Error: No meta_data provided. Returning original raw_data.")
+    }
     return(raw_data)
   }
   
+  # if no raw_data is provided, end by returning NULL
+  if (is.null(raw_data)) {
+    if(verbose){
+      cat("\n Error: No raw_data provided. Returning NULL.")
+    }
+    return(NULL)
+  }
+  
+  # if the meta_data table doesnt contain a variables column, end by returning raw_data
+  if(!("variables" %in% colnames(meta_data))){
+    if(verbose){
+      cat("\n Error: meta_data does not contain a 'variables' column. Returning original raw_data.")
+    }
+    return(raw_data)
+  }
   # get all variables in meta_data
   variables = meta_data$variables
   
@@ -60,28 +80,79 @@ apply_normalisation = function(raw_data, meta_data = NULL) {
   })
   
   # check if a pool variable is provided
-  if (is.null(pool_variable) | length(pool_variable) == 0) {
+  ## RETURNING RAW_DATA IF NO POOL_VARIABLE provided??
+  if(is.null(pool_variable) | length(pool_variable) == 0) {
+    if(verbose){
+      cat("\n Warning: no POOL variable found in meta_data. A 'total_pool' variable was added.")
+    }
+    
     # if not provided create a unique one
-    pool_variable = "total"
+    pool_variable = "total_pool"
     
     # add the pool variable to data
-    raw_data = cbind(raw_data, total = pool_variable)
+    raw_data = cbind(raw_data, total_pool = pool_variable)
     
     # get new data column names
     data_variables = colnames(raw_data)
   }
   
-  
   # check if more than 1 pool variable is provided
   if (length(pool_variable) > 1) {
-    print("Error: More than 1 pool variable provided")
+    if(verbose){
+      cat("\n Error: More than 1 pool variable provided")
+      }
     return(raw_data)
   }
   
-  #check if pool variable in data variables
+  # check if pool variable in data variables
   if (!(pool_variable %in% data_variables)) {
-    print("Error: pool variable not found in data")
+    if(verbose){
+      cat("\n Error: POOL variable not found in raw_data. Returning original raw_data.")
+      }
     return(raw_data)
+  }
+  
+  # check if ivs and dv are provided to select only relevant variables
+  if(!is.null(model_table)){
+    if(!is.null(dv)){
+      
+      ivs = model_table$variables
+      
+      # check if ivs dv are in data
+      if(all(c(ivs) %in% colnames(raw_data))){
+        if(dv %in% colnames(raw_data)){
+          
+          # keep only relevant variables
+          raw_data = raw_data[,c(pool_variable,dv,ivs)]
+          
+        }else{
+          if(verbose){
+            cat("\n Warning: dependent variable (dv) not found in raw_data. Normalising all raw_data.")
+            }
+        }
+      }else{
+        if(verbose){
+          cat("\n Warning: variables from model_table not found in raw_data. Normalising all raw_data.")
+          }
+      } 
+    }else{
+      if(verbose){
+        cat("\n Warning: dependent variable (dv) not provided. Normalising all raw_data.")
+      }
+    }
+  }
+  if(is.null(model_table)){
+    if(verbose){
+      cat("\n Warning: Normalising all raw_data as no model_table is provided.")
+    }
+  }
+  
+  # in raw data, check for and drop NAs
+  if(any(complete.cases(raw_data))) {
+    if(verbose){
+      cat("\n Warning: NA's found in raw_data will be dropped.")
+      }
+    raw_data = raw_data[complete.cases(raw_data), ]
   }
   
   # remove the pool variable from the others
@@ -113,16 +184,16 @@ apply_normalisation = function(raw_data, meta_data = NULL) {
 
 apply_transformation = function(raw_data,
                                 model_table = NULL,
-                                meta_data = NULL) {
+                                meta_data = NULL,
+                                verbose=T) {
   
   # check model table provided (not NULL)
   if(is.null(model_table)){
-    print("Info: No model table provided. Returning raw data.")
+    if(verbose)print("Info: No model table provided for transformations. Returning raw data.")
     return(raw_data)
   }
   
   # get variables from model table
-  ### add ivs, filter?
   variables = model_table$variables
   transformations = c("decay", "dim_rets", "lag", "ma")
   
@@ -138,24 +209,51 @@ apply_transformation = function(raw_data,
     # ...but has zero
     if (!is.null(pool)) {
       if (length(pool) == 0) {
-        print("Warning: no pool variable found in meta_data")
-        pool = "total"
-        raw_data = tibble(raw_data, total = pool)
+        if(verbose)print("Warning: no pool variable found in meta_data")
+        pool = "total_pool"
+        
+        # if default pool variable already in use replace it
+        if(pool %in% colnames(raw_data)){
+          if(verbose)print("Warning: 'total_pool' variable will be added/replaced from data")   
+          
+          raw_data$total_pool = NULL
+          
+        }
+        
+        raw_data = tibble(raw_data, total_pool = pool)
       }
     } else{
       # else create a pool variable "total"...
-      print("Warning: no pool variable found in meta_data")
-      pool = "total"
+      if(verbose)print("Warning: no pool variable found in meta_data")
+      
+      # if default pool variable already in use replace it
+      if(pool %in% colnames(raw_data)){
+        if(verbose)print("Warning: 'total_pool' variable will be added/replaced from data")   
+        
+        raw_data$total_pool = NULL
+        
+      }
+      
+      pool = "total_pool"
       # ...and add it to the data
-      raw_data = tibble(raw_data, total = pool)
+      raw_data = tibble(raw_data, total_pool = pool)
       
     }
   } else{
     # else create a pool variable "total"...
-    print("Info: no meta_data provided")
-    pool = "total"
+    if(verbose)print("Info: no meta_data provided")
+    pool = "total_pool"
     # ...and add it to the data
-    raw_data = tibble(raw_data, total = pool)
+    
+    # if default pool variable already in use replace it
+    if(pool %in% colnames(raw_data)){
+      if(verbose)print("Warning: 'total_pool' variable will be added/replaced from data")   
+      
+      raw_data$total_pool = NULL
+      
+    }
+    
+    raw_data = tibble(raw_data, total_pool = pool)
     
   }
   
@@ -193,12 +291,12 @@ apply_transformation = function(raw_data,
 }
 
 
-run_model = function(data, dv, ivs = NULL, meta_data = NULL, model_table = NULL) {
+run_model = function(data, dv, ivs = NULL, meta_data = NULL, model_table = NULL,verbose=F) {
   
   # if model table is provided
   if(!is.null(model_table)){
     if(!is.null(ivs)){
-      print("Info: will use variables from model_table and disregard ivs argument.")
+      if(verbose)print("Info: will use variables from model_table and disregard ivs argument.")
     }
     # use model table variables as ivs
     ivs = model_table$variables
@@ -207,16 +305,15 @@ run_model = function(data, dv, ivs = NULL, meta_data = NULL, model_table = NULL)
   # build formula object
   formula = build_formula(dv = dv, ivs = ivs)
   
-  # get only relevant columns
-  data = data[,c(dv,ivs)]
-  
   # generate norm_data
   norm_data = apply_normalisation(raw_data = data,
-                                  meta_data = meta_data)
+                                  meta_data = meta_data,
+                                  verbose = verbose)
   
   # generate trans_data
   trans_data = apply_transformation(raw_data = norm_data,
-                                    model_table = model_table)
+                                    model_table = model_table,
+                                    verbose = verbose)
   
   # run model on norm_data
   model = lm(formula = formula, data = trans_data)
@@ -232,7 +329,8 @@ decomping = function(model,
                      de_normalise = T,
                      raw_data = NULL,
                      categories = NULL,
-                     id_var = NULL) {
+                     id_var = NULL,
+                     verbose=T) {
   # get the coefficients from the model object
   coef = model$coefficients
   
@@ -252,7 +350,7 @@ decomping = function(model,
   # in raw data is supplied check for and drop NAs
   if(!is.null(raw_data)){
     if(any(complete.cases(raw_data))) {
-      print("Warning: NA's found in raw data will be dropped.")
+      if(verbose)print("Warning: NA's found in raw data will be dropped.")
       raw_data = raw_data[complete.cases(raw_data), ]
     }
   }
@@ -261,7 +359,7 @@ decomping = function(model,
   if (de_normalise) {
     # if no raw data provided
     if (is.null(raw_data)) {
-      print("Warning: you must provide a raw_data to de normalise the data")
+      if(verbose)print("Warning: you must provide a raw_data to de normalise the data")
     }
     
     # if the raw data is supplied
@@ -278,8 +376,8 @@ decomping = function(model,
         raw_actual_supplied = T
         
       } else{
-        # else print warning
-        print("Warning: dependent variable not found in raw data supplied")
+        # else if(verbose)print warning
+        if(verbose)print("Warning: dependent variable not found in raw data supplied")
         
       }
     }
@@ -293,7 +391,7 @@ decomping = function(model,
   
   # generate an id variable if one is not provided
   if (is.null(id_var)) {
-    print(paste0(
+    if(verbose)print(paste0(
       "Info: no id variable supplied. New id variable generated as 1 to ",
       nrow(data)
     ))
@@ -302,8 +400,8 @@ decomping = function(model,
   } else{
     # if and id_var is provided, check that raw data is provided
     if (is.null(raw_data)) {
-      # if raw data not provided print warning and generate id_var_values
-      print(
+      # if raw data not provided if(verbose)print warning and generate id_var_values
+      if(verbose)print(
         paste0(
           "Warning: ID variable provided, but no raw data provided. New id variable generated as 1 to ",
           nrow(data)
@@ -316,8 +414,8 @@ decomping = function(model,
       if (id_var %in% colnames(raw_data)) {
         id_var_values = raw_data[, id_var] %>% pull()
       } else{
-        # if raw data doesnt contain the id_var, print warning and generate id_variable
-        print(
+        # if raw data doesnt contain the id_var, if(verbose)print warning and generate id_variable
+        if(verbose)print(
           paste0(
             "Warning: ID variable provided not found in raw data provided. New id variable generated as 1 to ",
             nrow(data)
@@ -337,39 +435,39 @@ decomping = function(model,
   
   # if no meta_data is provided
   if (is.null(meta_data)) {
-    print(
+    if(verbose)print(
       "Info: no normalisation table (meta_data) found in model object. A pool variable ('total') will be generated."
     )
     
-    pool = tibble("total")
+    pool = tibble("total_pool")
   } else{
     # if a norm table is provided extract the pool variable
     pool_variable = meta_data$variables[toupper(meta_data$meta) == "POOL"]
     
-    # if no raw data provided print a warning and generate a pool variable
+    # if no raw data provided if(verbose)print a warning and generate a pool variable
     if (is.null(raw_data)) {
-      print(
+      if(verbose)print(
         "Warning: no raw_data found to extract pool variable found in model's meta_data. A pool variable ('total') will be generated."
       )
       
-      pool = tibble("total")
+      pool = tibble("total_pool")
     } else if (length(pool_variable) > 0) {
       # if raw data is provided check if it contains the pool variable
       if (pool_variable %in% colnames(raw_data)) {
         pool = raw_data[, pool_variable]
       } else{
-        # if not, print warning and geterate pool variable
-        print(
-          "Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total') will be generated."
+        # if not, if(verbose)print warning and geterate pool variable
+        if(verbose)print(
+          "Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total_pool') will be generated."
         )
-        pool = tibble("total")
+        pool = tibble("total_pool")
       }
     }else{
-      # if not, print warning and geterate pool variable
-      print(
-        "Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total') will be generated."
+      # if not, if(verbose)print warning and geterate pool variable
+      if(verbose)print(
+        "Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total_pool') will be generated."
       )
-      pool = tibble("total")
+      pool = tibble("total_pool")
     }
   }
   
@@ -430,11 +528,11 @@ decomping = function(model,
   if (raw_actual_supplied & de_normalise) {
     # check if meta_data is provided
     if (is.null(meta_data)) {
-      print("Warning: meta_data not found in model, but required to de-normalised.")
+      if(verbose)print("Warning: meta_data not found in model, but required to de-normalised.")
     } else{
       # else check if the dv is not in meta_data
       if (!(dv %in% meta_data$variables)) {
-        # if the dv is not found in the norm table print warning
+        # if the dv is not found in the norm table if(verbose)print warning
         ### STA could work if the de_normalise is true
         print("Warning: dv not found in meta_data.")
         
@@ -665,8 +763,8 @@ what_next = function(raw_data, ivs, dv, test_ivs, meta_data = NULL){
         
         # generate row
         adj_R2 = ms$adj.r.squared
-        coef = ms$coefficients[var,"Estimate"]
-        t_value = ms$coefficients[var,"t value"]
+        coef = ms$coefficients[i,"Estimate"]
+        t_value = ms$coefficients[i,"t value"]
         
         output[i,] = list(var,adj_R2,t_value,coef)
         
@@ -678,6 +776,109 @@ what_next = function(raw_data, ivs, dv, test_ivs, meta_data = NULL){
   
 }
 
+what_trans = function(raw_data,
+                      dv,
+                      test_table,
+                      ivs = NULL,
+                      model_table = NULL,
+                      meta_data = NULL) {
+  
+  test_table_t = test_table %>%
+    reshape2::dcast(variables ~ transformation, fill = 0)
+  
+  # if duplicate_var=T keep any trans variable in current model spec
+  # and add the transformed one
+  ## FOR NOW - replace
+  
+  # define output table to fill with loop
+  output = tibble(
+    variable = "0",
+    transformation = "",
+    value = 0,
+    adj_R2 = 0,
+    t_stat = 0,
+    coef = 0
+  )
+  
+  if (is.null(model_table)) {
+    # print("Warning: no model_table provided.")
+    if (!all(ivs %in% colnames(raw_data))) {
+      print(paste0(
+        "Warning: raw_data does not contain variables ",
+        paste0(ivs = ivs[!(ivs %in% colnames(raw_data))],
+               collapse = ";")
+      ))
+      
+      ivs = ivs[ivs %in% colnames(raw_data)]
+    }
+    
+    model_table = build_model_table(ivs)
+  } else{
+    ivs = model_table$variables
+    
+    if (!all(ivs %in% colnames(raw_data))) {
+      print(
+        "Warning: these variables from the model_table were not found in the raw_data and will be disregarded:"
+      )
+      print(ivs[!(ivs %in% colnames(raw_data))])
+      
+      model_table = model_table[ivs %in% colnames(raw_data), ]
+      ivs = model_table$variables
+    }
+  }
+  
+  for (i in 1:nrow(test_table)) {
+    # get test variable
+    # row = test_table_t[i, ]
+    var = test_table$variables[i]
+    trans = test_table$transformation[i]
+    val = test_table$value[i]
+    
+    row = test_table[i,]%>%
+      reshape2::dcast(variables ~ transformation, fill = 0)
+    
+    temp_model_table = model_table %>%
+      bind_rows(row) %>% 
+      mutate_all(~replace(., is.na(.), 0))
+    
+    # run model
+    model = TRY({
+      run_model(
+        data = raw_data,
+        dv = dv,
+        meta_data = meta_data,
+        model_table = temp_model_table
+      )
+    })
+    
+    
+    # if model failed
+    if (is.null(model)) {
+      # fill row with empty
+      output[i, ] = list(var, "0",0,0,0,0)
+      
+    } else{
+      # get model summary
+      ms = summary(model)
+      
+      # generate row
+      adj_R2 = ms$adj.r.squared
+      coef = ms$coefficients[var, "Estimate"]
+      t_value = ms$coefficients[var, "t value"]
+      
+      output[i, ] = list(var %>% as.character(),
+                         trans %>% as.character(),
+                         val %>% as.numeric(),
+                         adj_R2 %>% as.numeric(), 
+                         t_value %>% as.numeric(), 
+                         coef %>% as.numeric())
+      
+    }
+  }
+  
+  return(output)
+  
+}
 
 read_xcsv = function(file) {
   # if the file eds with .csv read as csv
