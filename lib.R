@@ -45,14 +45,6 @@ apply_normalisation = function(raw_data = NULL,
                                dv = NULL,
                                verbose=T){
   
-  # if no meta_data is provided, end by returning raw_data
-  if (is.null(meta_data)) {
-    if(verbose){
-      cat("\n Error: No meta_data provided. Returning original raw_data.")
-    }
-    return(raw_data)
-  }
-  
   # if no raw_data is provided, end by returning NULL
   if (is.null(raw_data)) {
     if(verbose){
@@ -60,6 +52,30 @@ apply_normalisation = function(raw_data = NULL,
     }
     return(NULL)
   }
+  # if raw_data is not a dataframe
+  if(!is.data.frame(raw_data)){
+    if(verbose){
+      cat("\n Error: raw_data must be a data.frame. Returning NULL.")
+    }
+    return(NULL)
+  }
+  
+  
+  # if no meta_data is provided, end by returning raw_data
+  if (is.null(meta_data)) {
+    if(verbose){
+      cat("\n Error: No meta_data provided. Returning original raw_data.")
+    }
+    return(raw_data)
+  }
+  # if meta_data is not a dataframe
+  if(!is.data.frame(meta_data)){
+    if(verbose){
+      cat("\n Error: meta_data must be a data.frame. Returning original raw_data.")
+    }
+    return(raw_data)
+  }
+  
   
   # if the meta_data table doesnt contain a variables column, end by returning raw_data
   if(!("variables" %in% colnames(meta_data))){
@@ -113,40 +129,45 @@ apply_normalisation = function(raw_data = NULL,
   }
   
   # check if ivs and dv are provided to select only relevant variables
-  if(!is.null(model_table)){
-    if(!is.null(dv)){
-      
-      ivs = model_table$variables
-      
-      # check if ivs dv are in data
-      if(all(c(ivs) %in% colnames(raw_data))){
-        if(dv %in% colnames(raw_data)){
-          
-          # keep only relevant variables
-          raw_data = raw_data[,c(pool_variable,dv,ivs)]
-          
-        }else{
-          if(verbose){
-            cat("\n Warning: dependent variable (dv) not found in raw_data. Normalising all raw_data.")
-            }
-        }
-      }else{
-        if(verbose){
-          cat("\n Warning: variables from model_table not found in raw_data. Normalising all raw_data.")
-          }
-      } 
-    }else{
-      if(verbose){
-        cat("\n Warning: dependent variable (dv) not provided. Normalising all raw_data.")
-      }
-    }
-  }
   if(is.null(model_table)){
     if(verbose){
       cat("\n Warning: Normalising all raw_data as no model_table is provided.")
     }
+  }else{
+    if(!is.data.frame(model_table)){
+      if(verbose){
+        cat("\n Warning: model_table must be a data.frame. Normalising all raw_data.")
+      }
+    }else{
+      if(!is.null(dv)){
+        
+        ivs = model_table$variables
+        
+        # check if ivs dv are in data
+        if(all(c(ivs) %in% colnames(raw_data))){
+          if(dv %in% colnames(raw_data)){
+            
+            # keep only relevant variables
+            raw_data = raw_data[,c(pool_variable,dv,ivs)]
+            
+          }else{
+            if(verbose){
+              cat("\n Warning: dependent variable (dv) not found in raw_data. Normalising all raw_data.")
+            }
+          }
+        }else{
+          if(verbose){
+            cat("\n Warning: variables from model_table not found in raw_data. Normalising all raw_data.")
+          }
+        } 
+      }else{
+        if(verbose){
+          cat("\n Warning: dependent variable (dv) not provided. Normalising all raw_data.")
+        }
+      } 
+    }
   }
-  
+
   # in raw data, check for and drop NAs
   if(any(complete.cases(raw_data))) {
     if(verbose){
