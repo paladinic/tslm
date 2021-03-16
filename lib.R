@@ -45,6 +45,11 @@ apply_normalisation = function(raw_data = NULL,
                                dv = NULL,
                                verbose=T){
   
+  if(!is.logical(verbose)){
+    cat("\n Warning: verbose provided must be logical (TRUE or FALSE). Setting verbose as TRUE.")
+    verbose = T
+  }
+  
   # if no raw_data is provided, end by returning NULL
   if (is.null(raw_data)) {
     if(verbose){
@@ -203,23 +208,78 @@ apply_normalisation = function(raw_data = NULL,
   
 }
 
-apply_transformation = function(raw_data,
+apply_transformation = function(raw_data=NULL,
                                 model_table = NULL,
                                 meta_data = NULL,
                                 verbose=T) {
   
+  if(!is.logical(verbose)){
+    cat("\n Warning: verbose provided must be logical (TRUE or FALSE). Setting verbose as TRUE.")
+    verbose = T
+  }
+  
+  
+  # check model table provided (not NULL)
+  if(is.null(raw_data)){
+    if(verbose){
+      cat("\n Error: No raw_data provided for transformations. Returning NULL.")
+    }
+    return(NULL)
+  }
+  if(!is.data.frame(raw_data)){
+    if(verbose){
+      cat("\n Error: raw_data provided must be a data.frame. Returning NULL.")
+    }
+    return(NULL)
+  }
+  
   # check model table provided (not NULL)
   if(is.null(model_table)){
-    if(verbose)print("Info: No model table provided for transformations. Returning raw data.")
+    if(verbose){
+      cat("\n Warning: No model table provided for transformations. Returning raw data.")
+    }
     return(raw_data)
   }
+  if(!is.data.frame(model_table)){
+    if(verbose){
+      cat("\n Warning: model table provided must be a data.frame. Returning raw_data.")
+    }
+    return(raw_data)
+  }
+  
   
   # get variables from model table
   variables = model_table$variables
   transformations = c("decay", "dim_rets", "lag", "ma")
   
   # if a meta table is provided try to extract the POOL variable
-  if (!is.null(meta_data)) {
+  if(is.null(meta_data)| !is.data.frame(meta_data)){
+    # else create a pool variable "total"...
+    if(verbose){
+      if(is.null(meta_data)){
+        cat("\n Info: no meta_data provided. No groups (i.e. POOLs) used in transformations.")
+      }
+      if(!is.null(meta_data) & !is.data.frame(meta_data)){
+        cat("\n Warning: meta_data provided must be a data.frame. No groups (i.e. POOLs) used in transformations.")
+      }
+      }
+    pool = "total_pool"
+    # ...and add it to the data
+    
+    # if default pool variable already in use replace it
+    if(pool %in% colnames(raw_data)){
+      if(verbose){
+        cat("\n Info: 'total_pool' variable will be added/replaced from data")
+      }   
+      
+      raw_data$total_pool = NULL
+      
+    }
+    
+    raw_data = tibble(raw_data, total_pool = pool)
+    
+  }
+  else if (!is.null(meta_data)) {
     pool = TRY({
       meta_data %>%
         filter(meta == "POOL") %>%
@@ -260,22 +320,6 @@ apply_transformation = function(raw_data,
       raw_data = tibble(raw_data, total_pool = pool)
       
     }
-  } else{
-    # else create a pool variable "total"...
-    if(verbose)print("Info: no meta_data provided")
-    pool = "total_pool"
-    # ...and add it to the data
-    
-    # if default pool variable already in use replace it
-    if(pool %in% colnames(raw_data)){
-      if(verbose)print("Warning: 'total_pool' variable will be added/replaced from data")   
-      
-      raw_data$total_pool = NULL
-      
-    }
-    
-    raw_data = tibble(raw_data, total_pool = pool)
-    
   }
   
   for (var in variables) {
@@ -312,15 +356,77 @@ apply_transformation = function(raw_data,
 }
 
 
-run_model = function(data, dv, ivs = NULL, meta_data = NULL, model_table = NULL,verbose=F) {
+run_model = function(data = NULL, dv = NULL, ivs = NULL, meta_data = NULL, model_table = NULL, verbose = T) {
   
-  # if model table is provided
+  if(!is.logical(verbose)){
+    cat("\n Warning: verbose provided must be logical (TRUE or FALSE). Setting verbose as TRUE.")
+    verbose = T
+  }
+  
+  # check data is not provided
+  if(is.null(data)){
+    if(verbose){
+      cat("\n Error: No data provided for transformations. Returning NULL.")
+    }
+    return(NULL)
+  }
+  if(!is.data.frame(data)){
+    if(verbose){
+      cat("\n Error: data provided must be a data.frame. Returning NULL.")
+    }
+    return(NULL)
+  }
+  
+  # check if meta_data provided
+  if(is.null(meta_data)){
+    if(verbose){
+      cat("\n Warning: no meta_data provided. Data will not be pooled nor normalised.")
+    }
+  }
+  
+  # check dv is not provided
+  if(is.null(dv)){
+    if(verbose){
+      cat("\n Error: no dependent variable ('dv') provided. Returning NULL.")
+    }
+    return(NULL)
+  }
+  
+  # check meta_data
+  if(is.null(meta_data)){
+    if(verbose){
+      cat("\n Info: No meta_data provided for transformations and normalisation.")
+    }
+  }
+  if(!is.data.frame(meta_data)){
+    if(verbose){
+      cat("\n Warning: meta_data provided must be a data.frame. Not using 'meta_data' provided for transformations and normalisation.")
+    }
+  }
+  
+  # if model_table and ivs not provided
+  if (is.null(model_table) & is.null(ivs)){
+    if(verbose){
+      cat("\n Error: no independent variables, 'ivs' nor 'model_table', provided. Returning NULL.")
+    }
+    return(NULL)
+  }
+  # if model_table is provided
   if(!is.null(model_table)){
     if(!is.null(ivs)){
-      if(verbose)print("Info: will use variables from model_table and disregard ivs argument.")
+      if(verbose)cat("\n Info: will use variables from model_table and disregard 'ivs' argument.")
     }
-    # use model table variables as ivs
-    ivs = model_table$variables
+    if(!is.data.frame(model_table)){
+      if(is.null(ivs)){
+        cat("\n Error: no 'ivs' nor 'model_table' provided. Returning NULL.")
+        return(NULL)
+      }else{
+        cat("\n Warning: 'model_table' must be a data.frame. Using 'ivs' argument instead.")
+      }
+    }else{
+      # use model table variables as ivs
+      ivs = model_table$variables
+    }
   }
   
   # build formula object
@@ -329,12 +435,12 @@ run_model = function(data, dv, ivs = NULL, meta_data = NULL, model_table = NULL,
   # generate norm_data
   norm_data = apply_normalisation(raw_data = data,
                                   meta_data = meta_data,
-                                  verbose = verbose)
+                                  verbose = F)
   
   # generate trans_data
   trans_data = apply_transformation(raw_data = norm_data,
                                     model_table = model_table,
-                                    verbose = verbose)
+                                    verbose = F)
   
   # run model on norm_data
   model = lm(formula = formula, data = trans_data)

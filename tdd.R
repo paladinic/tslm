@@ -1,8 +1,12 @@
 # Library           ####
-
 source("c:/Users/44751/Desktop/R/modelling lib/lib.R")
+## NOTES            ####
 
-# Apply Norm        ---------------------------------------------------------------
+# normalization without pool variable?
+
+# NAs in apply_norm and apply_trans  
+
+## Apply Norm       ---------------------------------------------------------------
 # SETUP             ####
 
 raw_data = read_xcsv(file = "c:/Users/44751/Desktop/R/modelling lib/data/pooled data.csv")
@@ -52,9 +56,11 @@ df = apply_normalisation(raw_data = raw_data,model_table = model_table_2,verbose
 # dv not a string
 dv2 = 100
 df = apply_normalisation(raw_data = raw_data,model_table = model_table,verbose = T,meta_data = meta_data,dv=dv2)
+# verbose not bool
+df = apply_normalisation(raw_data = raw_data,model_table = model_table,verbose = "T",meta_data = meta_data,dv=dv)
 
 
-# Apply Trans       ---------------------------------------------------------------
+## Apply Trans      ---------------------------------------------------------------
 # SETUP             ####
 
 raw_data = read_xcsv(file = "c:/Users/44751/Desktop/R/modelling lib/data/pooled data.csv")
@@ -77,19 +83,147 @@ model_table = tibble(
 )
 
 
-# TEST ####
+# TESTS ####
 # 1 NO ARGUMENTS    ####
 
 # raw_data
 df = apply_transformation(model_table = model_table,meta_data = meta_data)
-
 # model_table
+df = apply_transformation(raw_data = raw_data,meta_data = meta_data)
 # meta_data
+df = apply_transformation(raw_data = raw_data,model_table = model_table)
 # verbose
+df = apply_transformation(raw_data = raw_data,meta_data = meta_data,verbose = F)
 
 
 # 2 WRONG ARGUMENTS ####
 
-# Run Model         ---------------------------------------------------------------
-# Build Charts      ---------------------------------------------------------------
-# What ifs          ---------------------------------------------------------------
+# raw_data
+raw_data_2
+df = apply_transformation(raw_data = raw_data_2,model_table = model_table,meta_data = meta_data)
+# model_table
+model_table_2
+df = apply_transformation(model_table = model_table_2,raw_data = raw_data,meta_data = meta_data)
+# meta_data
+meta_data_2
+df = apply_transformation(meta_data = meta_data_2,raw_data = raw_data,model_table = model_table)
+# verbose
+verbose2 = "not a bool"
+df = apply_transformation(raw_data = raw_data,meta_data = meta_data,verbose = verbose2)
+
+
+## Run Model        ---------------------------------------------------------------
+# SETUP             ####
+
+raw_data = read_xcsv(file = "c:/Users/44751/Desktop/R/modelling lib/data/pooled data.csv")
+
+dv = "amazon"
+ivs = c("rakhi", "christmas", "diwali")
+id_var = "Week"
+
+meta_data = tibble(
+  variables = c("amazon", "rakhi", "country", "Week"),
+  meta = c("STA", "STA", "POOL", "ID")
+)
+
+model_table = tibble(
+  variables = ivs,
+  decay = c(0.3, 0, 0),
+  dim_rets = c(0, 0, 20),
+  lag = c(0, 52, 0),
+  ma = c(0, 0, 7)
+)
+
+
+# TESTS ####
+# 1 NO ARGUMENTS    ####
+
+# raw_data
+df = run_model(model_table = model_table,meta_data = meta_data,dv = dv)
+# model_table
+df = run_model(data = raw_data,meta_data = meta_data,dv = dv)
+df = run_model(data = raw_data,meta_data = meta_data,dv = dv,ivs = ivs)
+# dv
+df = run_model(data = raw_data,model_table = model_table)
+# ivs
+df = run_model(data = raw_data,dv = dv,meta_data = meta_data)
+df = run_model(data = raw_data,dv = dv,meta_data = meta_data,model_table = model_table)
+# meta_data
+df = run_model(data = raw_data,model_table = model_table, dv = dv)
+# verbose
+df = run_model(data = raw_data,meta_data = meta_data,verbose = F)
+
+
+# 2 WRONG ARGUMENTS ####
+
+# raw_data
+raw_data_2
+df = run_model(data = raw_data_2,model_table = model_table,meta_data = meta_data,dv = dv)
+# model_table
+model_table_2
+df = run_model(model_table = model_table_2,data = raw_data,meta_data = meta_data,dv = dv)
+ # meta_data
+meta_data_2
+df = run_model(meta_data = meta_data_2,data = raw_data,model_table = model_table,dv = dv)
+# verbose
+verbose2 = "not a bool"
+df = run_model(data = raw_data,meta_data = meta_data,verbose = verbose2,dv = dv,ivs = ivs)
+
+
+## Build Charts     ---------------------------------------------------------------
+
+# decomp
+
+# decomp chart
+
+# avm chart
+
+# SETUP             ####
+
+raw_data = read_xcsv(file = "c:/Users/44751/Desktop/R/modelling lib/data/pooled data.csv")
+
+dv = "amazon"
+ivs = c("rakhi", "christmas", "diwali")
+id_var = "Week"
+
+meta_data = tibble(
+  variables = c("amazon", "rakhi", "country", "Week"),
+  meta = c("STA", "STA", "POOL", "ID")
+)
+
+model_table = tibble(
+  variables = ivs,
+  decay = c(0.3, 0, 0),
+  dim_rets = c(0, 0, 20),
+  lag = c(0, 52, 0),
+  ma = c(0, 0, 7)
+)
+
+
+## What ifs         ---------------------------------------------------------------
+
+# what var next
+
+# what trans on vars
+
+# SETUP             ####
+
+raw_data = read_xcsv(file = "c:/Users/44751/Desktop/R/modelling lib/data/pooled data.csv")
+
+dv = "amazon"
+ivs = c("rakhi", "christmas", "diwali")
+id_var = "Week"
+
+meta_data = tibble(
+  variables = c("amazon", "rakhi", "country", "Week"),
+  meta = c("STA", "STA", "POOL", "ID")
+)
+
+model_table = tibble(
+  variables = ivs,
+  decay = c(0.3, 0, 0),
+  dim_rets = c(0, 0, 20),
+  lag = c(0, 52, 0),
+  ma = c(0, 0, 7)
+)
+
