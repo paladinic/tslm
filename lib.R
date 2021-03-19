@@ -457,7 +457,8 @@ decomping = function(model,
                      raw_data = NULL,
                      categories = NULL,
                      id_var = NULL,
-                     verbose=T) {
+                     verbose=T){
+  
   # get the coefficients from the model object
   coef = model$coefficients
   
@@ -477,7 +478,7 @@ decomping = function(model,
   # in raw data is supplied check for and drop NAs
   if(!is.null(raw_data)){
     if(any(complete.cases(raw_data))) {
-      if(verbose)print("Warning: NA's found in raw data will be dropped.")
+      if(verbose)cat("\n Warning: NA's found in raw data will be dropped.")
       raw_data = raw_data[complete.cases(raw_data), ]
     }
   }
@@ -552,8 +553,6 @@ decomping = function(model,
       }
     }
   }
-  
-  
   
   # try to get the normalisation table
   meta_data = TRY({
@@ -705,7 +704,7 @@ decomping = function(model,
                              "none",
                              calc)) %>%
       # group and sum the table by id and category
-      group_by(!!sym(id_var_name), category) %>%
+      group_by(!!sym(id_var), category,pool) %>%
       summarise(contrib = sum(contrib)) %>%
       rename(variable = category)
     
@@ -843,7 +842,101 @@ fit_chart = function(decomp_list,
 }
 
 
-what_next = function(raw_data, ivs, dv, test_ivs, meta_data = NULL){
+what_next = function(raw_data = NULL,
+                     ivs = NULL,
+                     model_table = NULL,
+                     dv = NULL, 
+                     test_ivs = NULL,
+                     meta_data = NULL, 
+                     verbose = TRUE){
+  
+  
+  # check if verbose is provided as logical
+  if(!is.logical(verbose)){
+    
+    cat("\n Warning: verbose provided must be logical (TRUE or FALSE). Setting verbose to TRUE.")
+    verbose = TRUE
+    
+  }
+  
+  # check if raw_data is provided
+  if(is.null(raw_data) | !is.data.frame(raw_data)){
+    
+    if(verbose){
+      if(is.null(raw_data))cat("\n Error: No raw_data provided. Returning NULL.")
+      else cat("\n Error: raw_data provided must be a data.frame. Returning NULL.")
+    }
+    
+    return(NULL)
+  }
+  
+  # check if model_table is provided
+  if(is.null(model_table) | !is.data.frame(model_table)){
+    
+    # check if model table provided is a data.frame
+    if(!is.null(model_table)){
+      if(verbose){
+        cat("\n Warning: model_table must be a data.frame. Attempting to use ivs.")
+      }
+    }
+    
+    # check if ivs is provided
+    if(is.null(ivs)){
+      
+      if(verbose){
+        cat("\n Error: No ivs nor model_table provided. Returning NULL.")
+      }
+      
+      return(NULL)
+    }
+    
+    # check if ivs proided is a character vector
+    if(!is.character(ivs)){
+      
+      if(verbose){
+        cat("\n Error: No model_table provided and ivs must be a chracter vector. Returning NULL.")
+      }
+      
+      return(NULL)
+    }
+    
+    # else build model table from ivs
+    model_table = build_model_table(ivs = ivs)
+  }
+  
+  # check if raw_data is provided
+  if(is.null(dv) | !is.character(dv)){
+    
+    if(verbose){
+      if(is.null(dv))cat("\n Error: No dv provided. Returning NULL.")
+      else cat("\n Error: dv provided must be a character variable. Returning NULL.")
+    }
+    
+    return(NULL)
+  }
+  
+  # check if raw_data is provided
+  if(is.null(test_ivs) | !is.character(test_ivs)){
+    
+    if(verbose){
+      if(is.null(test_ivs)) cat("\n Error: No test_ivs provided. Returning NULL.")
+      else cat("\n Error: test_ivs provided must be a character vector. Returning NULL.")
+    }
+    
+    return(NULL)
+  }
+  
+  # check if raw_data is provided
+  if(is.null(meta_data) | !is.data.frame(meta_data)){
+    
+    if(verbose){
+      if(is.null(meta_data)) cat("\n Warning: No meta_data provided for transformations and normalisation.")
+      else cat("\n Warning: meta_data provided must be a data.frame.")
+    }
+    
+  }
+  
+  
   
   
   # define output table to fill with loop
@@ -859,6 +952,11 @@ what_next = function(raw_data, ivs, dv, test_ivs, meta_data = NULL){
     # get test variable
     var = test_ivs[i]
     
+    # if the variable is already in the model
+    if(var %in% model_table$variables){
+      next
+    }
+    
     # check if in data
     if(!(var %in% colnames(raw_data))){
       print(
@@ -873,8 +971,30 @@ what_next = function(raw_data, ivs, dv, test_ivs, meta_data = NULL){
       output[i,] = list(var,NA,NA,NA)
       
     }else{
+      
+      
+      # build model_table_temp
+      model_table_temp = model_table %>% 
+        bind_rows(
+          tibble(
+            variables = var,
+            decay = 0,
+            dim_rets = 0,
+            lag = 0,
+            ma = 0
+            )
+          )
+      
       # run model
-      model = TRY({run_model(data = raw_data,dv = dv,ivs = c(ivs,var),meta_data = meta_data)})
+      model = TRY({
+        run_model(
+          data = raw_data,
+          dv = dv,
+          model_table = model_table_temp,
+          meta_data = meta_data,
+          verbose = F
+        )
+      })
       
       
       # if model failed
