@@ -238,96 +238,7 @@ what_next(raw_data = raw_data,ivs = ivs,dv = dv,test_ivs = test_ivs,verbose = ve
 
 # what trans on vars
 
-# Done --------------------------------------------------------------------
-
-
 ###Build Charts     ---------------------------------------------------------------
-
-# decomp
-
-# decomp chart
-
-# avm chart
-
-# SETUP             ####
-
-raw_data = read_xcsv(file = "c:/Users/44751/Desktop/R/modelling lib/data/pooled data.csv")
-
-dv = "amazon"
-ivs = c("christmas")
-id_var = "Week"
-
-meta_data = tibble(
-  variables = c("amazon", "country", "Week"),
-  meta = c("STA", "POOL", "ID")
-)
-
-categories = tibble(
-  variable = "christmas",
-  category = "seasonality",
-  calc = "min",
-)
-
-model_table = tibble(
-  variables = ivs,
-  decay = c(0.3),
-  dim_rets = c(0),
-  lag = c(3),
-  ma = c(0)
-)
-
-test_ivs = c("rakhi","diwali")
-
-
-p = run_model(
-  data = raw_data,
-  dv = dv,
-  model_table = model_table,
-  meta_data = meta_data
-) %>%
-  decomping(
-    de_normalise = T,
-    categories = categories,
-    raw_data = raw_data,
-    id_var = id_var
-  ) %>%
-  decomp_chart(pool = "UK",
-               variable_decomp = T)
-
-# NO ARGUMENT       ####
-# raw_data
-decomping(model = model,de_normalise = T,categories = categories,raw_data = raw_data,id_var = id_var)
-# model_table
-what_next(raw_data = raw_data,ivs = ivs,dv = dv,test_ivs = test_ivs,meta_data = meta_data)
-what_next(raw_data = raw_data,dv = dv,test_ivs = test_ivs,meta_data = meta_data)
-# dv
-what_next(raw_data = raw_data,ivs = ivs,test_ivs = test_ivs,meta_data = meta_data,dv = dv2)
-# ivs
-what_next(raw_data = raw_data,dv = dv,test_ivs = test_ivs,meta_data = meta_data)
-what_next(raw_data = raw_data,dv = dv,test_ivs = test_ivs,meta_data = meta_data,model_table = model_table)
-# meta_data
-what_next(raw_data = raw_data,dv = dv,test_ivs = test_ivs,ivs = ivs)
-# verbose
-what_next(raw_data = raw_data,ivs = ivs,dv = dv,test_ivs = test_ivs,verbose = F)
-
-# WRONG ARGUMENT    ####
-# raw_data
-what_next(ivs = ivs,dv = dv,test_ivs = test_ivs,meta_data = meta_data,raw_data = raw_data_2)
-# model_table
-what_next(raw_data = raw_data,ivs = ivs,dv = dv,test_ivs = test_ivs,meta_data = meta_data,model_table = model_table_2)
-# dv
-what_next(raw_data = raw_data,ivs = ivs,test_ivs = test_ivs,meta_data = meta_data,dv = dv2)
-# ivs
-what_next(raw_data = raw_data,dv = dv,test_ivs = test_ivs,meta_data = meta_data,ivs = 100)
-# meta_data
-what_next(raw_data = raw_data,dv = dv,test_ivs = test_ivs,ivs = ivs, meta_data = meta_data_2)
-# verbose
-what_next(raw_data = raw_data,ivs = ivs,dv = dv,test_ivs = test_ivs,verbose = verbose2)
-
-
-
-# what trans on vars
-
 # SETUP             ####
 
 raw_data = read_xcsv(file = "c:/Users/44751/Desktop/R/modelling lib/data/pooled data.csv")
@@ -345,7 +256,296 @@ model_table = tibble(
   variables = ivs,
   decay = c(0.3, 0, 0),
   dim_rets = c(0, 0, 20),
-  lag = c(0, 52, 0),
+  lag = c(0, -5, 0),
   ma = c(0, 0, 7)
 )
+
+model = run_model(
+  data = raw_data,
+  dv = dv,
+  model_table = model_table,
+  meta_data = meta_data,
+  verbose = T
+)
+
+categories = tibble(
+  variable = c("rakhi", "christmas", "diwali"),
+  category = c("seasonality","seasonality","seasonality"),
+  calc = c("min","min","min")
+)
+
+# NO ARGUMENT       ####
+
+
+# raw_data
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  de_normalise = T,
+  categories = categories,
+  # raw_data = raw_data,
+  id_var = id_var)
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(variable_decomp = T)
+
+# output interactive fit plot
+decomp_list %>% fit_chart()
+
+
+# model
+# decomposing the model
+decomp_list = decomping(
+  # model = model,
+  de_normalise = T,
+  categories = categories,
+  raw_data = raw_data,
+  id_var = id_var)
+
+
+# de_normalise
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  # de_normalise = T,
+  categories = categories,
+  raw_data = raw_data,
+  id_var = id_var)
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(
+  pool = "UK",
+  variable_decomp = T)
+
+# output interactive fit plot
+decomp_list %>% fit_chart(
+  pool = "UK")
+
+
+# categories
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  de_normalise = T,
+  # categories = categories,
+  raw_data = raw_data,
+  id_var = id_var)
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(
+  pool = "UK",
+  variable_decomp = F)
+
+# output interactive fit plot
+decomp_list %>% fit_chart(
+  pool = "UK")
+
+
+# id_var
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  de_normalise = T,
+  categories = categories,
+  raw_data = raw_data
+  # ,
+  # id_var = id_var
+  )
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(
+  pool = "UK",
+  variable_decomp = T)
+
+# output interactive fit plot
+decomp_list %>% fit_chart(
+  pool = "UK")
+
+
+# pool
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  de_normalise = T,
+  categories = categories,
+  raw_data = raw_data,
+  id_var = id_var)
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(
+  # pool = "UK",
+  variable_decomp = F)
+
+# output interactive fit plot
+decomp_list %>% fit_chart(
+  # pool = "India"
+  )
+
+
+# decomp_list
+# output interactive decomposition plot
+decomp_chart(
+  pool = "UK",
+  variable_decomp = F)
+
+# output interactive fit plot
+fit_chart(
+  pool = "UK")
+
+
+# variable_decomp
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  de_normalise = T,
+  categories = categories,
+  raw_data = raw_data,
+  id_var = id_var)
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(
+  pool = "UK")
+
+# output interactive fit plot
+decomp_list %>% fit_chart(
+  pool = "UK")
+
+
+# Done --------------------------------------------------------------------
+
+
+# WRONG ARGUMENT    ####
+
+
+# raw_data
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  de_normalise = T,
+  categories = categories,
+  raw_data = raw_data_2,
+  id_var = id_var)
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(variable_decomp = T)
+
+# output interactive fit plot
+decomp_list %>% fit_chart()
+
+
+# model
+# decomposing the model
+decomp_list = decomping(
+  model = "mode",
+  de_normalise = T,
+  categories = categories,
+  raw_data = raw_data,
+  id_var = id_var)
+
+
+# de_normalise
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  de_normalise = "T",
+  categories = categories,
+  raw_data = raw_data,
+  id_var = id_var)
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(
+  pool = "UK",
+  variable_decomp = T)
+
+# output interactive fit plot
+decomp_list %>% fit_chart(
+  pool = "UK")
+
+
+# categories
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  de_normalise = T,
+  categories = "categories",
+  raw_data = raw_data,
+  id_var = id_var)
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(
+  pool = "UK",
+  variable_decomp = F)
+
+# output interactive fit plot
+decomp_list %>% fit_chart(
+  pool = "UK")
+
+
+# id_var
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  de_normalise = T,
+  categories = categories,
+  raw_data = raw_data,
+  id_var = "idv"
+)
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(
+  pool = "UK",
+  variable_decomp = T)
+
+# output interactive fit plot
+decomp_list %>% fit_chart(
+  pool = "UK")
+
+
+# pool
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  de_normalise = T,
+  categories = categories,
+  raw_data = raw_data,
+  id_var = id_var)
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(
+  # pool = "UK",
+  variable_decomp = F)
+
+# output interactive fit plot
+decomp_list %>% fit_chart(
+  # pool = "India"
+)
+
+
+# decomp_list
+# output interactive decomposition plot
+decomp_chart(
+  pool = "UK",
+  variable_decomp = F)
+
+# output interactive fit plot
+fit_chart(
+  pool = "UK")
+
+
+# variable_decomp
+# decomposing the model
+decomp_list = decomping(
+  model = model,
+  de_normalise = T,
+  categories = categories,
+  raw_data = raw_data,
+  id_var = id_var)
+
+# output interactive decomposition plot
+decomp_list %>% decomp_chart(
+  pool = "UK")
+
+# output interactive fit plot
+decomp_list %>% fit_chart(
+  pool = "UK")
 

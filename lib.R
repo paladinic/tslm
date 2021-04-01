@@ -6,7 +6,7 @@ library(plotly)
 library(dplyr)
 library(zoo)
 
-# functions  ---------------------------------------------------------------
+# functions  ####
 
 # a function that accepts 2 arguments (a string and a vector of strings)
 # and returns a formula ( y ~ x1 + x2 ) 
@@ -43,7 +43,13 @@ apply_normalisation = function(raw_data = NULL,
                                meta_data = NULL,
                                model_table = NULL,
                                dv = NULL,
-                               verbose=T){
+                               verbose = T,
+                               de_normalise = T){
+  
+  
+  if(!de_normalise){
+    return(raw_data)
+  }
   
   if(!is.logical(verbose)){
     cat("\n Warning: verbose provided must be logical (TRUE or FALSE). Setting verbose as TRUE.")
@@ -83,9 +89,9 @@ apply_normalisation = function(raw_data = NULL,
   
   
   # if the meta_data table doesnt contain a variables column, end by returning raw_data
-  if(!("variables" %in% colnames(meta_data))){
+  if(!all(c("variables","meta") %in% colnames(meta_data))){
     if(verbose){
-      cat("\n Error: meta_data does not contain a 'variables' column. Returning original raw_data.")
+      cat("\n Error: meta_data does not contain a 'variables' and a 'meta' columns. Returning original raw_data.")
     }
     return(raw_data)
   }
@@ -99,6 +105,7 @@ apply_normalisation = function(raw_data = NULL,
   pool_variable = TRY({
     variables[toupper(meta_data$meta) == "POOL"]
   })
+  pool_mean = NULL
   
   # check if a pool variable is provided
   ## RETURNING RAW_DATA IF NO POOL_VARIABLE provided??
@@ -181,6 +188,16 @@ apply_normalisation = function(raw_data = NULL,
     raw_data = raw_data[complete.cases(raw_data), ]
   }
   
+  
+  if(dv %in% colnames(raw_data)){
+    
+    pool_mean = raw_data %>% 
+      group_by(!!sym(pool_variable)) %>% 
+      summarise(mean = mean(!!sym(dv))) %>% 
+      rename(pool = !!sym(pool_variable))
+    
+  }
+  
   # remove the pool variable from the others
   variables = variables[variables != pool_variable]
   
@@ -203,9 +220,7 @@ apply_normalisation = function(raw_data = NULL,
     }
     
   }
-  
-  return(raw_data)
-  
+  return(list(data = raw_data,pool_mean = pool_mean))
 }
 
 apply_transformation = function(raw_data=NULL,
@@ -278,8 +293,7 @@ apply_transformation = function(raw_data=NULL,
     
     raw_data = tibble(raw_data, total_pool = pool)
     
-  }
-  else if (!is.null(meta_data)) {
+  } else if (!is.null(meta_data)) {
     pool = TRY({
       meta_data %>%
         filter(meta == "POOL") %>%
@@ -356,86 +370,112 @@ apply_transformation = function(raw_data=NULL,
 }
 
 
-run_model = function(data = NULL, dv = NULL, ivs = NULL, meta_data = NULL, model_table = NULL, verbose = T) {
-  
-  if(!is.logical(verbose)){
-    cat("\n Warning: verbose provided must be logical (TRUE or FALSE). Setting verbose as TRUE.")
+
+run_model = function(data = NULL,
+                     dv = NULL,
+                     ivs = NULL,
+                     meta_data = NULL,
+                     model_table = NULL,
+                     verbose = T,
+                     de_normalise = F) {
+  if (!is.logical(verbose)) {
+    cat(
+      "\n Warning: verbose provided must be logical (TRUE or FALSE). Setting verbose as TRUE."
+    )
     verbose = T
   }
   
   # check data is not provided
-  if(is.null(data)){
-    if(verbose){
+  if (is.null(data)) {
+    if (verbose) {
       cat("\n Error: No data provided for transformations. Returning NULL.")
     }
     return(NULL)
   }
-  if(!is.data.frame(data)){
-    if(verbose){
+  if (!is.data.frame(data)) {
+    if (verbose) {
       cat("\n Error: data provided must be a data.frame. Returning NULL.")
     }
     return(NULL)
   }
   
   # check if meta_data provided
-  if(is.null(meta_data)){
-    if(verbose){
+  if (is.null(meta_data)) {
+    if (verbose) {
       cat("\n Warning: no meta_data provided. Data will not be pooled nor normalised.")
     }
   }
   
   # check dv is not provided
-  if(is.null(dv)){
-    if(verbose){
+  if (is.null(dv)) {
+    if (verbose) {
       cat("\n Error: no dependent variable ('dv') provided. Returning NULL.")
     }
     return(NULL)
   }
   
   # check meta_data
-  if(is.null(meta_data)){
-    if(verbose){
+  if (is.null(meta_data)) {
+    if (verbose) {
       cat("\n Info: No meta_data provided for transformations and normalisation.")
     }
   }
-  if(!is.data.frame(meta_data)){
-    if(verbose){
-      cat("\n Warning: meta_data provided must be a data.frame. Not using 'meta_data' provided for transformations and normalisation.")
+  if (!is.data.frame(meta_data)) {
+    if (verbose) {
+      cat(
+        "\n Warning: meta_data provided must be a data.frame. Not using 'meta_data' provided for transformations and normalisation."
+      )
     }
   }
   
   # if model_table and ivs not provided
-  if (is.null(model_table) & is.null(ivs)){
-    if(verbose){
-      cat("\n Error: no independent variables, 'ivs' nor 'model_table', provided. Returning NULL.")
+  if (is.null(model_table) & is.null(ivs)) {
+    if (verbose) {
+      cat(
+        "\n Error: no independent variables, 'ivs' nor 'model_table', provided. Returning NULL."
+      )
     }
     return(NULL)
   }
   # if model_table is provided
-  if(!is.null(model_table)){
-    if(!is.null(ivs)){
-      if(verbose)cat("\n Info: will use variables from model_table and disregard 'ivs' argument.")
+  if (!is.null(model_table)) {
+    if (!is.null(ivs)) {
+      if (verbose)
+        cat("\n Info: will use variables from model_table and disregard 'ivs' argument.")
     }
-    if(!is.data.frame(model_table)){
-      if(is.null(ivs)){
+    if (!is.data.frame(model_table)) {
+      if (is.null(ivs)) {
         cat("\n Error: no 'ivs' nor 'model_table' provided. Returning NULL.")
         return(NULL)
-      }else{
+      } else{
         cat("\n Warning: 'model_table' must be a data.frame. Using 'ivs' argument instead.")
       }
-    }else{
+    } else{
       # use model table variables as ivs
       ivs = model_table$variables
     }
   }
+  else{
+    model_table = build_model_table(ivs = ivs)
+    }
   
   # build formula object
   formula = build_formula(dv = dv, ivs = ivs)
   
   # generate norm_data
-  norm_data = apply_normalisation(raw_data = data,
-                                  meta_data = meta_data,
-                                  verbose = F)
+  norm_data = apply_normalisation(
+    raw_data = data,
+    meta_data = meta_data,
+    dv = dv,
+    verbose = F,
+    de_normalise = F
+  )
+  
+  # check norm_data
+  if (length(norm_data) == 2) {
+    pool_mean = norm_data$pool_mean
+    norm_data = norm_data$data
+  }
   
   # generate trans_data
   trans_data = apply_transformation(raw_data = norm_data,
@@ -448,46 +488,99 @@ run_model = function(data = NULL, dv = NULL, ivs = NULL, meta_data = NULL, model
   # add meta_data to mdoel object
   model$meta_data = meta_data
   
+  # set colnames as ivs. bypass backticks added to ivs by lm()
+  names(model$coefficients) = c("(Intercept)", ivs)
+  colnames(model$qr$qr) = c("(Intercept)", ivs)
+  names(model$effects)[1:(length(ivs) + 1)] = c("(Intercept)", ivs)
+  
+  # add dv and model_table to mdoel object
+  model$dv = dv
+  model$model_table = model_table
+  
+  if (exists("pool_mean")) {
+    model$pool_mean = pool_mean
+  }
+  
+  
   # return model object
   return(model)
 }
 
-decomping = function(model,
+
+decomping = function(model = NULL,
                      de_normalise = T,
                      raw_data = NULL,
                      categories = NULL,
                      id_var = NULL,
-                     verbose=T){
+                     verbose = T){
+  
+  # check verbose
+  if(!is.logical(verbose)){
+    cat("\n Warning: verbose provided mus be logical (TRUE or FALSE). Setting verbose to TRUE.")
+    verbose = TRUE
+  }
+  
+  
+  # check if model is provided
+  if(is.null(model)){
+    if(verbose){
+      cat("\n Error: no model provided. Returning NULL.")
+    }  
+    return(NULL)
+  }
+  if(class(model)!="lm"){
+    if(verbose){
+      cat("\n Error: model must be of type 'lm'. Returning NULL.")
+    }  
+    return(NULL)
+  }
   
   # get the coefficients from the model object
   coef = model$coefficients
   
+  ivs = names(coef)[-1]
+  # extract dependent variable name
+  dv = model$dv
+  
   # get the modeled data from the model object
   data = model$model
-  
-  # extract dependent variable name
-  dv = colnames(data)[1]
   
   # get the dependent variable from the data object
   actual = data[, dv]
   
   # initiate variable to confirm if correct raw data is provided
   raw_actual_supplied = F
-  
+
   
   # in raw data is supplied check for and drop NAs
   if(!is.null(raw_data)){
-    if(any(complete.cases(raw_data))) {
-      if(verbose)cat("\n Warning: NA's found in raw data will be dropped.")
+    
+    #check raw_data
+    if(!is.data.frame(raw_data)){
+      if (verbose) {
+        cat("\n Warning: raw_data must be a data.frame.")
+      }
+    }else if(any(complete.cases(raw_data))) {
+      if(verbose){
+        cat("\n Warning: NA's found in raw data will be dropped.")
+        }
       raw_data = raw_data[complete.cases(raw_data), ]
     }
+  }
+  
+  
+  if(!is.logical(de_normalise)){
+    if(verbose){
+      cat("\n Warning: de_normalise provided must be of type logical. Setting de_normalise to FALSE.")
+    }
+    de_normalise = F
   }
   
   # get raw dependent variable if supplied
   if (de_normalise) {
     # if no raw data provided
-    if (is.null(raw_data)) {
-      if(verbose)print("Warning: you must provide a raw_data to de normalise the data")
+    if (is.null(raw_data) | !is.data.frame(raw_data)) {
+      if(verbose)cat("\n Warning: you must provide a raw_data data.frame to de normalise the data.")
     }
     
     # if the raw data is supplied
@@ -505,7 +598,7 @@ decomping = function(model,
         
       } else{
         # else if(verbose)print warning
-        if(verbose)print("Warning: dependent variable not found in raw data supplied")
+        if(verbose)cat("\n Warning: dependent variable not found in raw_data supplied.")
         
       }
     }
@@ -519,8 +612,8 @@ decomping = function(model,
   
   # generate an id variable if one is not provided
   if (is.null(id_var)) {
-    if(verbose)print(paste0(
-      "Info: no id variable supplied. New id variable generated as 1 to ",
+    if(verbose)cat(paste0(
+      "\n Info: no id variable supplied. New id variable generated as 1 to ",
       nrow(data)
     ))
     id_var = "id"
@@ -529,9 +622,9 @@ decomping = function(model,
     # if and id_var is provided, check that raw data is provided
     if (is.null(raw_data)) {
       # if raw data not provided if(verbose)print warning and generate id_var_values
-      if(verbose)print(
+      if(verbose)cat(
         paste0(
-          "Warning: ID variable provided, but no raw data provided. New id variable generated as 1 to ",
+          "\n Warning: ID variable provided, but no raw data provided. New id variable generated as 1 to ",
           nrow(data)
         )
       )
@@ -540,12 +633,12 @@ decomping = function(model,
     else{
       # if raw data is provided, check that raw data contains the id variable
       if (id_var %in% colnames(raw_data)) {
-        id_var_values = raw_data[, id_var] %>% pull()
+        id_var_values = raw_data %>% pull(!!sym(id_var))
       } else{
         # if raw data doesnt contain the id_var, if(verbose)print warning and generate id_variable
-        if(verbose)print(
+        if(verbose)cat(
           paste0(
-            "Warning: ID variable provided not found in raw data provided. New id variable generated as 1 to ",
+            "\n Warning: ID variable provided not found in raw data provided. New id variable generated as 1 to ",
             nrow(data)
           )
         )
@@ -555,15 +648,14 @@ decomping = function(model,
   }
   
   # try to get the normalisation table
-  meta_data = TRY({
-    model$meta_data
-  })
+  meta_data = model$meta_data
   
   # if no meta_data is provided
   if (is.null(meta_data)) {
-    if(verbose)print(
-      "Info: no normalisation table (meta_data) found in model object. A pool variable ('total') will be generated."
-    )
+    if(verbose){
+      cat(
+      "\n Info: no normalisation table (meta_data) found in model object. A pool variable ('total') will be generated."
+    )}
     
     pool = tibble("total_pool")
   } else{
@@ -572,8 +664,8 @@ decomping = function(model,
     
     # if no raw data provided if(verbose)print a warning and generate a pool variable
     if (is.null(raw_data)) {
-      if(verbose)print(
-        "Warning: no raw_data found to extract pool variable found in model's meta_data. A pool variable ('total') will be generated."
+      if(verbose)cat(
+        "\n Warning: no raw_data found to extract pool variable found in model's meta_data. A pool variable ('total') will be generated."
       )
       
       pool = tibble("total_pool")
@@ -583,15 +675,15 @@ decomping = function(model,
         pool = raw_data[, pool_variable]
       } else{
         # if not, if(verbose)print warning and geterate pool variable
-        if(verbose)print(
-          "Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total_pool') will be generated."
+        if(verbose)cat(
+          "\n Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total_pool') will be generated."
         )
         pool = tibble("total_pool")
       }
     }else{
       # if not, if(verbose)print warning and geterate pool variable
-      if(verbose)print(
-        "Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total_pool') will be generated."
+      if(verbose)cat(
+        "\n Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total_pool') will be generated."
       )
       pool = tibble("total_pool")
     }
@@ -654,13 +746,13 @@ decomping = function(model,
   if (raw_actual_supplied & de_normalise) {
     # check if meta_data is provided
     if (is.null(meta_data)) {
-      if(verbose)print("Warning: meta_data not found in model, but required to de-normalised.")
+      if(verbose)cat("\n Warning: meta_data not found in model, but required to de-normalised.")
     } else{
       # else check if the dv is not in meta_data
       if (!(dv %in% meta_data$variables)) {
         # if the dv is not found in the norm table if(verbose)print warning
         ### STA could work if the de_normalise is true
-        print("Warning: dv not found in meta_data.")
+        cat("\n Warning: dv not found in meta_data.")
         
       } else{
         pool_mean = tibble(raw_actual = raw_actual %>% pull(),
@@ -683,10 +775,17 @@ decomping = function(model,
     }
   }
   
-  
   if (is.null(categories)) {
+    if(verbose){
+      cat("\n Warning: no categories provided for visualisations. Setting category_decomp = variable_decomp")
+    }
     category_decomp = variable_decomp
-  } else{
+  } else if(!is.data.frame(categories)){
+    if(verbose){
+      cat("\n Warning: categories provided must be of type data.frame. Setting category_decomp = variable_decomp")
+    }
+    category_decomp = variable_decomp
+  }else{
     # generate category decomp using categories df input
     category_decomp = variable_decomp %>%
       # add a categories and calc column to the variables decomp table
@@ -773,9 +872,368 @@ decomping = function(model,
   return(l)
 }
 
-decomp_chart = function(decomp_list,
+predict = function(model = NULL,
+                    raw_data = NULL,
+                    categories = NULL,
+                    id_var = NULL,
+                    de_normalise = T,
+                    verbose = T){
+  # check verbose
+  if (!is.logical(verbose)) {
+    cat("\n Warning: verbose provided mus be logical (TRUE or FALSE). Setting verbose to TRUE.")
+    verbose = TRUE
+  }
+  # check if de_normalise is logical
+  if (!is.logical(de_normalise)) {
+    if (verbose) {
+      cat(
+        "\n Warning: de_normalise provided must be of type logical. Setting de_normalise to FALSE."
+      )
+    }
+    de_normalise = F
+  }
+  
+  # check if model is provided
+  if (is.null(model)) {
+    if (verbose) {
+      cat("\n Error: no model provided. Returning NULL.")
+    }
+    return(NULL)
+  }
+  if (class(model) != "lm") {
+    if (verbose) {
+      cat("\n Error: model must be of type 'lm'. Returning NULL.")
+    }
+    return(NULL)
+  }
+  
+  # check data
+  if (is.null(raw_data)) {
+    if (verbose) {
+      cat("\n Error: raw_data must be provded. Returning NULL.")
+    }
+    return(NULL)
+  }
+  if (!is.data.frame(raw_data)) {
+    # check raw_data
+    #  .. if is not data.frame
+    if (verbose) {
+      cat("\n Error: raw_data must be a data.frame. Returning NULL.")
+    }
+    return(NULL)
+  }
+  if (any(complete.cases(raw_data))) {
+    if (verbose) {
+      cat("\n Warning: NA's found in raw data will be dropped.")
+    }
+    raw_data = raw_data[complete.cases(raw_data),]
+  }
+  
+  # extract dependent variable, pool mean and coefficients from model 
+  dv = model$dv
+  pool_mean = model$pool_mean
+  coef = model$coefficients
+  
+  # get and check independent variables
+  ivs = names(coef)[-1]
+  if (!all(ivs %in% colnames(raw_data))) {
+    # .. if ivs are not found in raw_Data
+    if (verbose) {
+      cat("\n Error: ivs not found in raw data. Returning NuLL.")
+    }
+    return(NULL)
+  }
+  
+  # get the intercept value from the coef object
+  intercept = coef[1]
+  # keep the other coefficients
+  coef = coef[-1]
+  
+  # generate an id variable if one is not provided
+  if (is.null(id_var)) {
+    if (verbose) {
+      cat(paste0(
+        "\n Info: no id variable supplied. New id variable generated as 1 to ",
+        nrow(raw_data)
+      ))
+    }
+    id_var = "id"
+    id_var_values = 1:nrow(raw_data)
+  } else{
+    # if raw data is provided, check that raw data contains the id variable
+    if (id_var %in% colnames(raw_data)) {
+      id_var_values = raw_data %>% pull(!!sym(id_var))
+    } else{
+      # if raw data doesnt contain the id_var, if(verbose)print warning and generate id_variable
+      if (verbose){
+        cat(
+          paste0(
+            "\n Warning: ID variable provided not found in raw data provided. New id variable generated as 1 to ",
+            nrow(raw_data)
+          )
+        )}
+      id_var_values = 1:nrow(raw_data)
+    }
+    
+  }
+  
+  # get the meta_data from model
+  meta_data = model$meta_data
+  
+  # if no meta_data is provided
+  if (is.null(meta_data)) {
+    if (verbose) {
+      cat(
+        "\n Info: no meta_data found in model object. A pool variable ('total_pool') will be generated."
+      )
+    }
+    
+    pool = tibble("total_pool")
+  } else{
+    # if a norm table is provided extract the pool variable
+    pool_variable = meta_data$variables[toupper(meta_data$meta) == "POOL"]
+    
+    if (length(pool_variable) > 0) {
+      # if raw data is provided check if it contains the pool variable
+      if (pool_variable %in% colnames(raw_data)) {
+        pool = raw_data[, pool_variable]
+      } else{
+        # if not, if(verbose)print warning and geterate pool variable
+        if (verbose) {
+          cat(
+            "\n Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total_pool') will be generated."
+          )
+        }
+        pool = tibble("total_pool")
+      }
+    } else{
+      # if not, if(verbose)print warning and geterate pool variable
+      if (verbose)
+        cat(
+          "\n Warning: pool variable from model's meta_data not found in raw_data. A pool variable ('total_pool') will be generated."
+        )
+      pool = tibble("total_pool")
+    }
+  }
+  
+  # get the independent variables decomp
+  independendent_variables =  raw_data[, ivs]
+  if (length(coef) == 1) {
+    # multiply independent variable by coefficient
+    variable_decomp = data.frame(independendent_variables * coef)
+    colnames(variable_decomp) = names(coef)
+  } else{
+    # multiply independent variables data frame by coefficient vector
+    variable_decomp = data.frame(mapply(
+      FUN = `*`,
+      independendent_variables,
+      coef,
+      SIMPLIFY = FALSE
+    ))
+  }
+  
+  # rename variable decomp using coef names
+  colnames(variable_decomp) = names(coef)
+  
+  # generate tibble df using the variable decomp, intercept and id variable
+  variable_decomp = tibble(
+    "(Intercept)" = intercept,
+    variable_decomp,
+    id = id_var_values,
+    pool = pool %>% pull()
+  ) %>%
+    reshape2::melt(id.vars = c("id", "pool")) %>%
+    rename(contrib = value)
+  
+  
+  # generate the fitted values dataframe
+  fitted_values = variable_decomp %>%
+    group_by(id, pool) %>%
+    summarise(value = sum(contrib)) %>% 
+    mutate(variable = "predicted")
+  
+  # if an id variable name is provided use it
+  if (id_var != "id") {
+    # fitted values
+    col_names = colnames(fitted_values)
+    col_names[col_names == "id"] = id_var
+    colnames(fitted_values) = col_names
+    
+    # decomp
+    col_names = colnames(variable_decomp)
+    col_names[col_names == "id"] = id_var
+    colnames(variable_decomp) = col_names
+    
+  }
+  
+  # if de_normalising check for pool_mean in model
+  if (de_normalise) {
+    if (is.null(pool_mean)) {
+      if (verbose)
+        cat("\n Warning: pool_mean not found in model, but required to de-normalised.")
+    }else{
+      
+      variable_decomp = variable_decomp %>%
+        left_join(pool_mean, by = "pool") %>%
+        mutate(contrib = as.numeric(contrib),
+               mean = as.numeric(mean),
+               contrib = contrib * mean) %>%
+        select(-mean)
+      
+      
+      fitted_values = fitted_values %>%
+        left_join(pool_mean, by = "pool") %>%
+        mutate(value = as.numeric(value),
+               mean = as.numeric(mean),
+               value = value * mean) %>%
+        select(-mean)
+      
+    }
+  }
+  
+  if (is.null(categories)) {
+    if (verbose) {
+      cat(
+        "\n Warning: no categories provided for visualisations. Setting category_decomp = variable_decomp"
+      )
+    }
+    category_decomp = variable_decomp
+  } else if (!is.data.frame(categories)) {
+    if (verbose) {
+      cat(
+        "\n Warning: categories provided must be of type data.frame. Setting category_decomp = variable_decomp"
+      )
+    }
+    category_decomp = variable_decomp
+  } else{
+    # generate category decomp using categories df input
+    category_decomp = variable_decomp %>%
+      # add a categories and calc column to the variables decomp table
+      left_join(categories, by = "variable") %>%
+      # if no category is found for a variable assign it "Other" as a category
+      mutate(category  = if_else(is.na(category),
+                                 "Other",
+                                 category)) %>%
+      # assign the "Base" category to the intercept variable
+      mutate(category  = if_else(variable == "(Intercept)",
+                                 "Base",
+                                 category)) %>%
+      # if no calc is found for a variable/category assign it "none" as a calc
+      mutate(calc  = if_else(is.na(calc),
+                             "none",
+                             calc)) %>%
+      # group and sum the table by id and category
+      group_by(!!sym(id_var), category, pool) %>%
+      summarise(contrib = sum(contrib)) %>%
+      rename(variable = category)
+    
+    # extract minned variables
+    minned_vars = categories %>%
+      filter(calc == "min") %>%
+      pull(category) %>%
+      unique()
+    
+    # extract maxed variables
+    maxed_vars = categories %>%
+      filter(calc == "max") %>%
+      pull(category) %>%
+      unique()
+    
+    # extract the initial (pre calc) base value
+    based_value = category_decomp[category_decomp$variable == "Base", "contrib"]
+    
+    # for each minned variable
+    for (cat in minned_vars) {
+      # get the category values
+      cat_val = category_decomp %>%
+        filter(variable == cat) %>%
+        pull(contrib)
+      
+      # get the minimum of each category
+      min_val = cat_val %>%
+        min()
+      
+      # replace the category values with the minned variable
+      category_decomp[category_decomp$variable == cat, "contrib"] = cat_val - min_val
+      
+      # replace the base value with the base plus min value
+      based_value = based_value + min_val
+    }
+    # for each maxed variable
+    for (cat in maxed_vars) {
+      # get the category values
+      cat_val = category_decomp %>%
+        filter(variable == cat) %>%
+        pull(contrib)
+      
+      # get maximum of each category
+      max_val = cat_val %>%
+        max()
+      
+      # replace the category values with the mixed variable
+      category_decomp[category_decomp$variable == cat, "contrib"] = cat_val - max_val
+      
+      # replace the base value with the base plus max value
+      based_value = based_value + max_val
+    }
+    
+    # replace the base value with the minned and maxed base value
+    category_decomp[category_decomp$variable == "Base", "contrib"] = based_value
+    
+  }
+  
+  # return a list of category, variable tables, and fitted values
+  l = list(
+    category_decomp = category_decomp,
+    variable_decomp = variable_decomp,
+    fitted_values = fitted_values
+  )
+  
+  return(l)
+}
+
+extend_decomp = function(decomp_list,
+                         predict_list,verbose=T){
+  # check verbose is.logical (TRUE or FALSE)
+  if(!is.logical(verbose)){
+    cat("\n Warning: verbose provided must be logical (TRUE or FALSE). SEtting verbose to TRUE.")
+    verbose = TRUE
+  }
+  
+  # check if decomps found
+  category_decomp = decomp_list$category_decomp %>% 
+    bind_rows(predict_list$category_decomp)
+  variable_decomp = decomp_list$variable_decomp %>% 
+    bind_rows(predict_list$variable_decomp)
+  fitted_values = decomp_list$fitted_values %>% 
+    bind_rows(predict_list$fitted_values)
+  
+  return(list(category_decomp = category_decomp,
+              variable_decomp = variable_decomp,
+              fitted_values = fitted_values))
+  
+}
+
+decomp_chart = function(decomp_list = NULL,
                         pool = NULL,
-                        variable_decomp = F) {
+                        variable_decomp = F,
+                        sorting="id_var",
+                        verbose = T) {
+  
+  # Check verbose
+  if(!is.logical(verbose)){
+    cat("\n Warning: verbose must be logical (TRUE or FALSE). Setting verbose to TRUE.")
+    verbose = T
+  }
+  
+  # Check decomp_list
+  if(is.null(decomp_list)){
+    if(verbose){
+      cat("\n Error: no decomp_list provided. Returning NULL.")
+    }
+    return(NULL)
+  }
+  
   # get decomp
   if (variable_decomp) {
     # get variable decomp table
@@ -785,50 +1243,186 @@ decomp_chart = function(decomp_list,
     decomp = decomp_list$category_decomp
   }
   
+  # check decomp table
+  if(!is.data.frame(decomp)){
+  }
+  if(!all(c("pool","variable","contrib") %in% colnames(decomp))){
+    if(verbose){
+      cat("\n Error: decomp table must include 3 columns called 'pool', 'variable' and 'value'. Returning NULL.")
+    }
+    return(NULL)
+  }
+  
   # get actual dependent variable table
   fitted_values = decomp_list$fitted_values
-  fitted_values = fitted_values[fitted_values$variable %in% c("actual", "residual"), ]
   
-  # filter by pool if provided
-  if (!is.null(pool)) {
-    decomp = decomp[decomp$pool == pool, ]
-    fitted_values = fitted_values[fitted_values$pool == pool, ]
+  # check fitted_values
+  if(!is.data.frame(fitted_values)){
+    ##
   }
+  if(!all(c("pool","variable","value") %in% colnames(fitted_values))){
+    if(verbose){
+      cat("\n Error: fitted_values table must include 3 columns called 'pool', 'variable' and 'value'. Returning NULL.")
+    }
+    return(NULL)
+  }
+  
+  fitted_values = fitted_values[fitted_values$variable %in% c("predicted", "residual"), ]
   
   # the id variable name is the first column name
   id_var = colnames(decomp)[1]
   
-  # plot
-  plot_ly() %>%
-    add_bars(
-      data = decomp,
-      x = ~ get(id_var),
-      y = ~ contrib,
-      color = ~ variable
-    ) %>%
-    add_lines(
-      data = fitted_values,
-      x = ~ get(id_var),
-      y = ~ value,
-      color = ~ variable
-    ) %>%
-    layout(barmode = "relative")
-  
-}
-
-fit_chart = function(decomp_list,
-                     pool = NULL) {
-  # get actual dependent variable table
-  fitted_values = decomp_list$fitted_values
   
   # filter by pool if provided
   if (!is.null(pool)) {
-    fitted_values = fitted_values[fitted_values$pool == pool, ]
+    
+    if(!any(decomp$pool == pool)){
+      if(verbose){
+        cat("\n Warning: POOL ",pool," not found. No POOL filtering applied.")
+      }
+    }
+    else{
+      decomp = decomp[decomp$pool == pool, ]%>% 
+        rename(value = contrib)
+      fitted_values = fitted_values[fitted_values$pool == pool, ]
+    }
   }
+  
+  if(is.null(pool)){
+    if(verbose){
+      cat("\n Warning: no pool provided. Aggregating by id_var.")
+    }
+    
+    fitted_values = fitted_values %>% 
+      group_by(variable,!!sym(id_var)) %>% 
+      summarise(value = sum(value)) %>% 
+      mutate(pool = "total_pool")
+    
+    decomp = decomp %>% 
+      group_by(variable,!!sym(id_var)) %>% 
+      summarise(contrib = sum(contrib)) %>% 
+      mutate(pool = "total_pool") %>% 
+      rename(value = contrib)
+    
+    pool = "total_pool"
+  }
+  
+  if(sorting == "residual"){
+    sorted_id_var = fitted_values %>% 
+      select(-pool) %>% 
+      reshape2::acast(model ~ variable) %>% 
+      data.frame() %>% 
+      rownames_to_column(id_var) %>% 
+      tibble() %>% 
+      arrange(is.na(residual)) %>% 
+      pull(!!sym(id_var))
+    
+    fitted_values[,id_var] <- factor(fitted_values %>% pull(!!sym(id_var)), levels = sorted_id_var)
+    decomp[,id_var] <- factor(decomp %>% pull(!!sym(id_var)), levels = sorted_id_var)
+    
+    
+  }
+  
+  # plot
+  plot_ly(data = decomp,
+          x = ~get(id_var)) %>%
+    add_trace(type = "bar",
+              y = ~ value,
+              color = ~ variable,
+              name = ~ variable) %>%
+    add_lines(
+      data = fitted_values %>% 
+      filter(variable == "predicted"),
+      x = fitted_values %>% 
+        filter(variable == "predicted") %>% 
+        pull(!!sym(id_var)),
+      y = fitted_values %>% 
+        filter(variable == "predicted") %>% 
+        pull(value),
+      line = list(color = c("black")),
+      name = "predicted"
+    ) %>%
+    add_lines(
+      data = fitted_values %>% 
+        filter(variable == "residual"),
+      x = ~ get(id_var),
+      y = ~ value,
+      line = list(color = c("red")),
+      name = ~ variable
+    ) %>%
+    layout(barmode = "relative",
+           xaxis = list(title = id_var,
+                        type = "category"))
+  
+}
+
+fit_chart = function(decomp_list = NULL,
+                     pool = NULL,
+                     sorting = "id_var",
+                     verbose = T) {
+  
+  
+  # Check verbose
+  if(!is.logical(verbose)){
+    cat("\n Warning: verbose must be logical (TRUE or FALSE). Setting verbose to TRUE.")
+    verbose = T
+  }
+  
+  # Check decomp_list
+  if(is.null(decomp_list)){
+    if(verbose){
+      cat("\n Error: no decomp_list provided. Returning NULL.")
+    }
+    return(NULL)
+  }
+  
+  
+  # get actual dependent variable table
+  fitted_values = decomp_list$fitted_values
   
   # the id variable name is the first column name
   id_var = colnames(fitted_values)[1]
   
+  # filter by pool if provided
+  if (!is.null(pool)) {
+    if(!any(fitted_values$pool == pool)){
+      if(verbose){
+        cat("\n Warning: POOL ",pool," not found. No POOL filtering applied.")
+      }
+    }
+    else{
+      fitted_values = fitted_values[fitted_values$pool == pool, ]
+    }
+  }
+  
+  if(is.null(pool)){
+    if(verbose){
+      cat("\n Warning: no pool provided. Aggregating by id_var.")
+    }
+    fitted_values = fitted_values %>% 
+      group_by(variable,!!sym(id_var)) %>% 
+      summarise(value = sum(value)) %>% 
+      mutate(pool = "total_pool")
+    
+    pool = "total_pool"
+  }
+  
+  
+  if(sorting == "residual"){
+    sorted_id_var = fitted_values %>% 
+      select(-pool) %>% 
+      reshape2::acast(model ~ variable) %>% 
+      data.frame() %>% 
+      rownames_to_column(id_var) %>% 
+      tibble() %>% 
+      arrange(is.na(residual)) %>% 
+      pull(!!sym(id_var))
+    
+    fitted_values[,id_var] <- factor(fitted_values %>% pull(!!sym(id_var)), levels = sorted_id_var)
+    
+    
+  }
+  
   # plot
   plot_ly() %>%
     add_lines(
@@ -837,10 +1431,11 @@ fit_chart = function(decomp_list,
       y = ~ value,
       color = ~ variable
     ) %>%
-    layout(barmode = "relative")
+    layout(xaxis = list(
+             title = id_var
+           ))
   
 }
-
 
 what_next = function(raw_data = NULL,
                      ivs = NULL,

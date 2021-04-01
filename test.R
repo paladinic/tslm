@@ -1,8 +1,8 @@
-# funcs    ####
-
+# funcs       ####
+library(tibble)
 source("c:/Users/44751/Desktop/R/modelling lib/lib.R")
 
-# test 1   ------------------------------------------------------------------
+# test 1      ------------------------------------------------------------------
 
 raw_data = read_xcsv(file = "c:/Users/44751/Desktop/R/modelling lib/data/pooled data.csv")
 data = raw_data
@@ -38,7 +38,7 @@ decomp_list = decomping(model = model,
 decomp_chart(decomp_list, pool = "India")
 fit_chart(decomp_list = decomp_list, pool = "India")
 
-# test 2   --------------------------------------------------------------------
+# test 2      --------------------------------------------------------------------
 
 raw_data = mtcars
 
@@ -62,7 +62,7 @@ decomp_list = decomping(model = model,
 
 decomp_chart(decomp_list = decomp_list)
 fit_chart(decomp_list = decomp_list)
-# test 3   ####
+# test 3      ####
 
 raw_data = read_xcsv("c:/Users/44751/Desktop/Data/eqq.csv")
 
@@ -116,7 +116,7 @@ what_next(
 )
 
 
-###########
+###########   
 
 test_table = tibble(
   variables = c(
@@ -139,7 +139,7 @@ what_trans(
 
 
 
-# auto save####
+# auto save   ####
 
 schedule = list(
   year = list(as.POSIXct("00:00:00 2021-03-05",format="%H:%M:%S %Y-%m-%d"),60*24*365,NA),
@@ -161,3 +161,106 @@ for(i in 1:length(schedule)){
   
   schedule[[i]] = item
 }
+
+# forecasting -------------------------------------------------------------
+
+# raw_data = read_xcsv("c:/Users/44751/Desktop/Data/eqq.csv")
+# raw_data_1 = raw_data[500:nrow(raw_data),]
+# raw_data_0 = raw_data[1:499,]
+# raw_data = raw_data_1
+
+raw_data = mtcars %>% rownames_to_column("model")
+raw_data_1 = raw_data[20:nrow(raw_data),]
+raw_data_0 = raw_data[1:19,]
+
+dv = "mpg"
+id_var = "model"
+ivs = colnames(raw_data)
+ivs = ivs[!(ivs %in% c(dv,id_var))]
+
+# meta_data = tibble(variables = c(dv, ivs),
+#                    meta = rep("STA", 9))
+
+# model_table = build_model_table(ivs = ivs)
+
+model = run_model(
+  dv = dv,
+  ivs = ivs,
+  data = raw_data_0,
+  # meta_data = meta_data,
+  de_normalise = F
+)
+
+decomp_list = decomping(model = model, raw_data = raw_data_0,id_var = id_var,de_normalise = F)
+
+decomp_chart(decomp_list = decomp_list)
+fit_chart(decomp_list = decomp_list)
+
+
+### predict function
+
+
+# INPUTS #
+
+
+
+forecast_list = forecast(model = model,
+                         raw_data = raw_data_1,
+                         id_var = id_var,
+                         de_normalise = F)
+
+forecast_list %>% fit_chart()
+forecast_list %>% decomp_chart()
+
+extended = extend(decomp_list = extended,
+                  forecast_list = forecast_list)
+
+
+extended %>% fit_chart(sorting = "residual")
+extended %>% decomp_chart(sorting = "residual")
+
+resid = forecast_list$fitted_values[forecast_list$fitted_values$variable=="predicted",] %>% 
+  full_join(
+    raw_data_1 %>% 
+      select(model,mpg)
+  ) %>% 
+  mutate(resid = (value-mpg)^2) %>% 
+  pull(resid)
+
+# optimising  ####
+
+optim = function(f,min=0,max=100,maximise = T){
+  
+  # if maximise, flip the function f on the x-axis
+  if(maximise){
+    
+    f = paste0("-1*(",f,")")
+    
+  }
+  
+  # turn function string f to R-function
+  func = function(x){
+      eval(parse(text = f))
+  }
+  
+  # optimise (minimise) function
+  res = optimize(func,interval = c(min,max))
+  
+  # if maximise, flib function back to assign correct objective max
+  if(maximise){
+    
+    f = paste0("-1*(",f,")")
+    func = function(x){
+      eval(parse(text = f))
+    }
+    
+  }
+  res$objective = func(res$minimum)
+  
+  # return x and y (i.e. f(x) ) optimised values
+  return(list(x = res$minimum,
+              y = res$objective))
+}
+
+
+
